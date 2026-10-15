@@ -78,8 +78,6 @@ WantedBy=multi-user.target
 
 def activate(setup,options):
     if not options.get('hy2_domain'):return
-    setup.run('systemctl','enable','relay-hy2')
-    setup.run('systemctl','restart','relay-hy2')
     import sys
     sys.path.insert(0,str(Path('/opt/relay-panel/current/panel')))
     from hy2_control import Controller
@@ -91,6 +89,15 @@ def activate(setup,options):
     cfg=yaml.safe_load(controller.config.read_text())
     cfg.update(auth={'type':'http','http':{'url':'http://127.0.0.1:8083/auth/'+settings['auth_token']}},trafficStats={'listen':'127.0.0.1:9998','secret':settings['api_secret']})
     cfg.setdefault('masquerade',{'type':'file','file':{'dir':'/var/lib/hysteria/cover'}})
-    setup.write(controller.config,yaml.safe_dump(cfg),mode=0o640,group='hysteria')
+    pending=controller.config.with_suffix('.new')
+    setup.write(pending,yaml.safe_dump(cfg),mode=0o640,group='hysteria')
+    pending.replace(controller.config)
+    setup.run('systemctl','enable','relay-hy2')
+    setup.run('systemctl','restart','relay-hy2')
     setup.run('systemctl','enable','hysteria-server')
     setup.run('systemctl','restart','hysteria-server')
+    import time
+    for attempt in range(60):
+        try:controller.stats_api('online');return
+        except OSError:time.sleep(1)
+    raise RuntimeError('Hysteria пока не готова. Проверь DNS её домена и доступность TCP 80 для получения сертификата; ключи сохранены.')

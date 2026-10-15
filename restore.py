@@ -9,6 +9,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import time
 
 def restore_files(files,paths):
     """Only logical data files are copied, never programs or executable config."""
@@ -71,6 +72,17 @@ def main(argv=None):
             (target/'state.json').unlink(missing_ok=True)
             subprocess.run(['systemctl','restart','relay-helper','relay-panel','relay-backup'],check=True)
             if hy2:subprocess.run(['systemctl','restart','relay-hy2','hysteria-server'],check=True)
+            from installer import health
+            health(current['domain'],public=False)
+            from backup_routes import helper as backup_ready
+            from hy2_routes import helper as hy2_ready
+            for attempt in range(30):
+                try:
+                    backup_ready({'op':'status'})
+                    if hy2:hy2_ready({'op':'status'});controller.stats_api('online')
+                    break
+                except (OSError,ValueError):time.sleep(1)
+            else:raise ValueError('Службы управления не стали готовы после восстановления.')
             print('Готово. Используй прежние пароль, 2FA и ключи. Проверь DNS обоих доменов и доступность UDP-порта',current.get('hy2_port','—'))
         except Exception:
             manage.restore_internal(before)
