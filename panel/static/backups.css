@@ -1,4 +1,4 @@
-#fsociety-preview a.fc-button{color:var(--fc-text);text-decoration:none;display:inline-flex;align-items:center}
+#fsociety-preview a.fc-button{color:var(--fc-ink);text-decoration:none;display:inline-flex;align-items:center}
 #fsociety-preview #backup-settings .fc-rule{grid-template-columns:minmax(0,1fr) minmax(220px,420px);align-items:center}
 #fsociety-preview #backup-settings input:not([type=checkbox]){min-width:0;align-self:center;height:44px}
 #fsociety-preview #backup-settings .fc-rule:has(input[type=checkbox]){display:block}
