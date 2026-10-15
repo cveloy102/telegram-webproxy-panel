@@ -84,13 +84,14 @@ def inspect_tar(path,destination):
     """Validate everything before creating target files; reject links, duplicates and traversal."""
     destination=Path(destination)
     with tarfile.open(path,'r:gz') as archive:
-        members=archive.getmembers();names=set();total=0
-        for item in members:
+        members=[];names=set();total=0
+        for item in archive:
             name=item.name
             if not item.isfile() or name.startswith('/') or '..' in Path(name).parts or '\\' in name or name in names:raise ValueError('Небезопасная структура архива.')
             if name!='manifest.json' and name not in ('telegram/users.json','telegram/usage.json','owner/auth.json','owner/panel.sqlite3','hysteria/hy2.sqlite3','backup/config.json','backup/rclone.conf') and not name.startswith(('site/','hysteria/cover/')):raise ValueError('Неизвестный файл в архиве.')
             names.add(name);total+=item.size
             if total>MAX_EXPANDED or len(names)>2000:raise ValueError('Архив превышает допустимый размер.')
+            members.append(item)
         if 'manifest.json' not in names:raise ValueError('Нет манифеста резервной копии.')
         manifest=json.load(archive.extractfile('manifest.json'))
         if manifest.get('schema')!=1 or not isinstance(manifest.get('files'),dict) or set(manifest['files'])!=names-{'manifest.json'}:raise ValueError('Неподдерживаемая или повреждённая копия.')
