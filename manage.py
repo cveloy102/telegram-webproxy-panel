@@ -62,7 +62,9 @@ def backup(include_programs=False):
             target=P(temp)/'panel.sqlite3'
             with contextlib.closing(sqlite3.connect(f'file:{database}?mode=ro',uri=True)) as source,contextlib.closing(sqlite3.connect(target)) as destination:source.backup(destination)
             info=archive.gettarinfo(str(target),arcname='var/lib/relay-panel/panel.sqlite3')
+            import pwd,grp
             stat=database.stat();info.uid=stat.st_uid;info.gid=stat.st_gid;info.mode=0o600
+            info.uname=pwd.getpwuid(stat.st_uid).pw_name;info.gname=grp.getgrgid(stat.st_gid).gr_name
             with open(target,'rb') as file:archive.addfile(info,file)
     return path
 
