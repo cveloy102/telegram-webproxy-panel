@@ -103,6 +103,7 @@ class Controller:
         parts=[]
         for path in (self.paths['users'],self.paths['owner']/'auth.json',self.paths['hy2config']):
             if path.exists():parts.append(path.read_bytes())
+        if self.paths.get('caddy') and self.paths['caddy'].exists():parts.append(self.paths['caddy'].read_bytes())
         for path,queries in [(self.paths['owner']/'panel.sqlite3',['SELECT salt,hash,totp,verified FROM owner','SELECT hash FROM recovery ORDER BY hash','SELECT * FROM settings']), (self.paths['hy2']/'hy2.sqlite3',['SELECT id,name,secret,enabled,quota,expires,enforce FROM users ORDER BY id','SELECT k,v FROM settings WHERE k NOT IN ("started","epoch") ORDER BY k'])]:
             if not path.exists():continue
             with contextlib.closing(sqlite3.connect(f'file:{path}?mode=ro',uri=True)) as c:

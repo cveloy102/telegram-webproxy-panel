@@ -61,6 +61,18 @@ class Backups(unittest.TestCase):
         self.assertEqual(folder_id('https://drive.google.com/drive/folders/synthetic_folder_123?hl=ru'),'synthetic_folder_123')
         for value in ('https://evil.example/folders/id','../../etc/passwd','bad;touch /tmp/a'):
             with self.assertRaises(ValueError):folder_id(value)
+    def test_site_redirects_survive_snapshot_and_merge_without_duplicates(self):
+        self.paths['caddy']=self.root/'Caddyfile'
+        self.paths['caddy'].write_text('example.com {\n redir https://proxy.example.com{uri} 302\n}\n')
+        target=self.root/'redirects.tar.gz'
+        with target.open('wb') as f:manifest=build_tar(f,self.paths)
+        self.assertEqual(manifest['redirects'],[{'host':'example.com','code':'302'}])
+        sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+        from restore import merge_redirects
+        config='proxy.example.com {\n reverse_proxy 127.0.0.1:8080\n}\n'
+        once=merge_redirects(config,manifest['redirects'],'proxy.example.com')
+        self.assertEqual(once,merge_redirects(once,manifest['redirects'],'proxy.example.com'))
+        with self.assertRaises(ValueError):merge_redirects(config,[{'host':'bad.example\nexec evil','code':'302'}],'proxy.example.com')
     def test_upload_hash_case_and_concurrent_change(self):
         import hashlib
         for label in ('md5','MD5'):

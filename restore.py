@@ -3,6 +3,7 @@ import argparse
 import contextlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import sqlite3
@@ -10,6 +11,20 @@ import subprocess
 import sys
 import tempfile
 import time
+
+def merge_redirects(config,redirects,target):
+    from installer import domain_name
+    target=domain_name(target)
+    if not isinstance(redirects,list) or len(redirects)>20:raise ValueError('Некорректные перенаправления в копии.')
+    for entry in redirects:
+        host=domain_name(entry['host']);code=entry['code']
+        if host==target or code not in ('permanent','temporary','301','302','307','308'):raise ValueError('Некорректное перенаправление.')
+        block=host+' {\n redir https://'+target+'{uri} '+code+'\n}\n'
+        pattern=r'(?m)^'+re.escape(host)+r'\s*\{\s*redir\s+https://'+re.escape(target)+r'\{uri\}\s+(?:permanent|temporary|301|302|307|308)\s*\}\s*'
+        if re.search(pattern,config):config=re.sub(pattern,lambda m:block,config)
+        elif re.search(r'(?m)^'+re.escape(host)+r'\s*\{',config):raise ValueError('Домен перенаправления уже используется другой настройкой Caddy: '+host)
+        else:config+='\n'+block
+    return config
 
 def restore_files(files,paths):
     """Only logical data files are copied, never programs or executable config."""
@@ -41,6 +56,9 @@ def main(argv=None):
     with tempfile.TemporaryDirectory(prefix='relay-restore-',dir='/run') as tmp:
         temp=Path(tmp);manifest=decrypt(args.archive,args.identity.read_text(),temp)
         domain=domain_name(manifest['telegram_domain']);hy2=domain_name(manifest['hysteria_domain']) if manifest['hysteria'] else None
+        redirects=manifest.get('redirects',[])
+        caddy=Path('/etc/caddy/Caddyfile')
+        restored_caddy=merge_redirects(caddy.read_text(),redirects,domain)
         print('Дата копии (Unix):',manifest['created']);print('Telegram:',domain);print('Hysteria:',hy2 or 'нет')
         if args.inspect:print('Копия расшифрована, манифест и базы проверены. Данные сервера не изменены.');return
         current=json.loads(Path('/etc/relay-panel/install.json').read_text())
@@ -52,6 +70,12 @@ def main(argv=None):
         before=manage.backup(include_programs=True);print('Копия состояния до восстановления:',before)
         try:
             paths=layout();restore_files(temp/'files',paths)
+            if redirects:
+                pending=caddy.with_suffix('.restore');pending.write_text(restored_caddy);pending.chmod(0o644)
+                try:
+                    subprocess.run(['caddy','validate','--adapter','caddyfile','--config',str(pending)],check=True,capture_output=True)
+                    pending.replace(caddy);subprocess.run(['systemctl','reload','caddy'],check=True)
+                finally:pending.unlink(missing_ok=True)
             from helper import Controller
             controller=Controller();controller.apply(controller.read())
             if hy2:

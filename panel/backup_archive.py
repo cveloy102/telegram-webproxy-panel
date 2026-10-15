@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import sqlite3
@@ -23,6 +24,7 @@ def layout(prefix='relay',panel_dir=None):
       'site':Path(os.getenv('RELAY_BACKUP_SITE','/srv/relay-site')),
       'hy2config':Path('/etc/hysteria/config.yaml'),
       'hy2cover':Path('/var/lib/hysteria/cover'),
+      'caddy':Path('/etc/caddy/Caddyfile'),
       'panel_dir':Path(panel_dir or '/opt/relay-panel/current/panel'),
     }
 
@@ -50,7 +52,13 @@ def build_tar(output,paths,backup_dir=None):
                 path=Path(backup_dir)/name
                 if path.exists():files['backup/'+name]=path
         users=json.loads(files['telegram/users.json'].read_text())
-        metadata={'schema':1,'created':int(time.time()),'telegram_domain':users['host'],'hysteria':False,'files':{}}
+        redirects=[]
+        if paths.get('caddy') and paths['caddy'].exists():
+            pattern=r'(?m)^([A-Za-z0-9., -]+)\s*\{\s*redir\s+https://'+re.escape(users['host'])+r'\{uri\}\s+(permanent|temporary|301|302|307|308)\s*\}'
+            for match in re.finditer(pattern,paths['caddy'].read_text()):
+                for host in re.split(r'[,\s]+',match[1].strip()):
+                    if host:redirects.append({'host':host,'code':match[2]})
+        metadata={'schema':1,'created':int(time.time()),'telegram_domain':users['host'],'hysteria':False,'redirects':redirects,'files':{}}
         if 'hysteria/hy2.sqlite3' in files:
             with contextlib.closing(sqlite3.connect(files['hysteria/hy2.sqlite3'])) as c:
                 settings={k:json.loads(v) for k,v in c.execute('SELECT k,v FROM settings WHERE k IN (?,?)',('host','port'))}
