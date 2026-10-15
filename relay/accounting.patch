@@ -1,0 +1,140 @@
+diff --git a/internal/server/server.go b/internal/server/server.go
+index ab437d3..a01e315 100644
+--- a/internal/server/server.go
++++ b/internal/server/server.go
+@@ -218,7 +218,8 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request, suffix string)
+ 		s.serveNotFound(w, r)
+ 		return
+ 	}
+-	switch suffix {
++	s.manager.NoteAddress(token, clientIP)
++ switch suffix {
+ 	case "api/v1/session":
+ 		s.serveSession(w, r, token, clientIP)
+ 	case "api/v1/up":
+@@ -439,7 +440,8 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
+ 		s.serveNotFound(w, r)
+ 		return
+ 	}
+-	acquired := false
++	if ip,err:=s.clientIP(r);err==nil {s.manager.NoteAddress(token,ip)}
++ acquired := false
+ 	if lanes {
+ 		acquired = value.AcquireWebSocketLane(laneID)
+ 	} else {
+diff --git a/internal/session/manager.go b/internal/session/manager.go
+index c038779..e6eff75 100644
+--- a/internal/session/manager.go
++++ b/internal/session/manager.go
+@@ -7,6 +7,7 @@ import (
+ 	"encoding/base64"
+ 	"encoding/binary"
+ 	"errors"
++ "os"
+ 	"sync"
+ 	"sync/atomic"
+ 	"time"
+@@ -65,7 +66,8 @@ type Capacity struct {
+ }
+ 
+ type Manager struct {
+-	config      config.Config
++	account *accounting
++ config      config.Config
+ 	tokenKey    [sha256.Size]byte
+ 	tokenFilter cipher.Block
+ 	// Capabilities are secret, so their leading bytes are an unpredictable
+@@ -112,7 +114,8 @@ func NewManager(value config.Config, tokenKey [sha256.Size]byte) *Manager {
+ 		value.Profiles[i].Limits = value.Profiles[i].Limits.WithDefaults(value.Limits)
+ 	}
+ 	result := &Manager{
+-		config:              value,
++		account: newAccounting(os.Getenv("TPROXY_ACCOUNTING_FILE")),
++ config:              value,
+ 		tokenKey:            tokenKey,
+ 		tokenFilter:         newTokenFilter(tokenKey),
+ 		capabilityPrefixes:  make(map[uint64]struct{}, len(value.Profiles)),
+@@ -133,6 +136,7 @@ func NewManager(value config.Config, tokenKey [sha256.Size]byte) *Manager {
+ 		result.capabilityPrefixes[capabilityPrefix(value.Profiles[i].Capability[:])] = struct{}{}
+ 	}
+ 	go result.cleanupLoop()
++ go result.accountingLoop()
+ 	return result
+ }
+ 
+@@ -257,7 +261,8 @@ func (m *Manager) Create(token, clientIP string, body []byte) (CreateResult, err
+ 	limits := m.config.Limits
+ 	limits.MaxStreamsPerSession = profileLimits.MaxStreamsPerSession
+ 	limits.MaxPendingPerSession = profileLimits.MaxPendingPerSession
+-	created := newSession(sessionOptions{
++	var created *Session
++ created = newSession(sessionOptions{
+ 		profile:       entry.profile,
+ 		clientIP:      clientIP,
+ 		limits:        limits,
+@@ -273,8 +278,8 @@ func (m *Manager) Create(token, clientIP string, body []byte) (CreateResult, err
+ 			m.streamsRejected.Add(1)
+ 			m.limitHits.Add(1)
+ 		},
+-		onUp:   func(count int) { m.bytesUp.Add(uint64(count)) },
+-		onDown: func(count int) { m.bytesDown.Add(uint64(count)) },
++		onUp:   func(count int) { m.bytesUp.Add(uint64(count)); m.account.bytes(entry.profile.Name, created.accountIP.Load().(string), count, true) },
++		onDown: func(count int) { m.bytesDown.Add(uint64(count)); m.account.bytes(entry.profile.Name, created.accountIP.Load().(string), count, false) },
+ 	})
+ 	m.sessions[sessionHash] = created
+ 	m.sessionsPerIP[clientIP]++
+@@ -285,6 +290,7 @@ func (m *Manager) Create(token, clientIP string, body []byte) (CreateResult, err
+ 	entry.sessionToken = sessionToken
+ 	entry.session = created
+ 	m.sessionsCreated.Add(1)
++ m.account.opened(entry.profile.Name, clientIP)
+ 	return CreateResult{
+ 		Token:   sessionToken,
+ 		Welcome: frame.Encode(frame.Welcome, 0, nil),
+@@ -367,6 +373,7 @@ func (m *Manager) Shutdown() {
+ 	if m.closed {
+ 		m.mu.Unlock()
+ 		<-m.done
++ <-m.account.done
+ 		return
+ 	}
+ 	m.closed = true
+@@ -383,6 +390,8 @@ func (m *Manager) Shutdown() {
+ 		value.wait()
+ 	}
+ 	<-m.done
++ <-m.account.done
++ m.flushAccounting()
+ }
+ 
+ func (m *Manager) sessionFinished(value *Session) {
+diff --git a/internal/session/session.go b/internal/session/session.go
+index 20776de..e88567d 100644
+--- a/internal/session/session.go
++++ b/internal/session/session.go
+@@ -10,6 +10,7 @@ import (
+ 	"math"
+ 	"net"
+ 	"sync"
++ "sync/atomic"
+ 	"time"
+ 
+ 	"github.com/telegramdesktop/tproxy-server/internal/config"
+@@ -102,6 +103,7 @@ func newCarrierLane() *carrierLane {
+ type Session struct {
+ 	profile  *config.Profile
+ 	clientIP string
++ accountIP atomic.Value
+ 	limits   config.Limits
+ 	timeouts config.Timeouts
+ 	budget   func(int, int, pendingClass) bool
+@@ -172,7 +174,8 @@ func newSession(options sessionOptions) *Session {
+ 	if carrier == config.CarrierHTTPSLanes {
+ 		result.carrierLanes[0] = newCarrierLane()
+ 	}
+-	return result
++	result.accountIP.Store(options.clientIP)
++ return result
+ }
+ 
+ func (s *Session) CarrierMode() config.CarrierMode {

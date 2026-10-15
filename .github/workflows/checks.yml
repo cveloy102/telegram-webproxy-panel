@@ -1,0 +1,29 @@
+name: Checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python and shell checks
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-flask python3-qrcode python3-pil shellcheck
+          bash -n install.sh
+          shellcheck install.sh
+          python3 -m compileall -q installer.py manage.py units.py panel tests
+          python3 -m unittest discover -s tests -v
+          node --check panel/static/panel.js
+      - name: Install, HTTPS, key management, update and rollback on expendable Ubuntu runner
+        run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_ubuntu.py
+      - name: Installer diagnostics on failure
+        if: failure()
+        run: |
+          sudo tail -n 100 /var/log/relay-panel-install.log || true
+          sudo journalctl --no-pager -n 60 -u relay-panel -u relay-helper -u tproxy-server -u mtproxy -u caddy || true

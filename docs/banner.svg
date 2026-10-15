@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-labelledby="title desc">
+ <title id="title">Telegram WEB Proxy + Relay Panel</title><desc id="desc">One command. Your server. Your keys.</desc>
+ <rect width="1200" height="320" rx="16" fill="#101112"/>
+ <g fill="#f44b50"><path d="M60 64h14v14H60zm22 0h14v14H82zm22 0h14v14h-14zM60 86h14v14H60zm22 0h14v14H82zm22 0h14v14h-14zM60 108h14v14H60zm22 0h14v14H82zm22 0h14v14h-14z"/></g>
+ <g font-family="monospace"><text x="150" y="98" font-size="18" fill="#f44b50">SELF-HOSTED / RELAY PANEL</text><text x="60" y="192" font-size="52" font-weight="bold" fill="#eee">Telegram WEB Proxy</text><text x="62" y="251" font-size="22" fill="#aaa">ONE COMMAND. YOUR SERVER. YOUR KEYS.</text></g>
+</svg>

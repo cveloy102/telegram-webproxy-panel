@@ -1,0 +1,31 @@
+name: Ошибка установки или панели
+description: Сообщить о проблеме без секретов и личных данных
+body:
+  - type: markdown
+    attributes:
+      value: "Не прикладывай ключи, QR, пароли, cookie, базы, резервные копии и историю IP. Уязвимости: см. SECURITY.md."
+  - type: input
+    id: version
+    attributes:
+      label: Версия проекта
+      placeholder: 0.1.0-beta.1
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: ОС и архитектура
+      placeholder: Ubuntu 24.04 amd64
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Что произошло и на каком шаге
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Текст ошибки без личных данных
+      description: Перед отправкой удали домен, IP, имена и секреты.

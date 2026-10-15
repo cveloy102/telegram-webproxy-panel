@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+*.key
+*.pem
+*.sqlite3*
+*.log
+*.tar.gz
+*.zip
+auth.json
+users.json
+usage.json
+setup-code
+.env
+node_modules/
