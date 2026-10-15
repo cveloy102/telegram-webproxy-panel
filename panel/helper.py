@@ -62,6 +62,7 @@ class Controller:
             atomic(paths[1], {'secrets': [p['secret'] for p in profiles]}, 0o640, 'mtproxy')
             subprocess.run(['/usr/local/bin/tproxy-server', '-config', '/etc/tproxy-server/config.json',
                             '-profiles-file', str(paths[0]), '-check'], check=True, capture_output=True, timeout=15)
+            subprocess.run(['systemctl', 'reset-failed', 'mtproxy', 'tproxy-server'], check=True, capture_output=True, timeout=15)
             subprocess.run(['systemctl', 'restart', 'mtproxy', 'tproxy-server'], check=True, capture_output=True, timeout=60)
             for _ in range(30):
                 try:
@@ -76,6 +77,7 @@ class Controller:
             for path, data in zip(paths, before):
                 if data is not None:
                     path.write_bytes(data)
+            subprocess.run(['systemctl', 'reset-failed', 'mtproxy', 'tproxy-server'], capture_output=True, timeout=15)
             subprocess.run(['systemctl', 'restart', 'mtproxy', 'tproxy-server'], capture_output=True, timeout=60)
             raise RuntimeError('Change rolled back; previous keys restored') from None
 

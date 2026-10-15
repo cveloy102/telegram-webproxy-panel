@@ -251,8 +251,10 @@ def install_files(source,options,work,candidate,mtproxy):
 def activate():
     run('systemctl','daemon-reload')
     run('systemctl','enable','--now','tproxy-firewall')
-    run('systemctl','enable','--now','mtproxy','tproxy-server','relay-helper','relay-panel','relay-refresh.timer')
+    run('systemctl','enable','mtproxy','tproxy-server','relay-helper','relay-panel','relay-refresh.timer')
+    run('systemctl','reset-failed','mtproxy','tproxy-server','relay-helper','relay-panel')
     run('systemctl','restart','mtproxy','tproxy-server','relay-helper','relay-panel')
+    run('systemctl','start','relay-refresh.timer')
     run('systemctl','enable','--now','caddy')
     run('systemctl','restart','caddy')
 

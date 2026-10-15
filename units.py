@@ -10,6 +10,7 @@ ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 '''
+MTPROXY_HARDEN=HARDEN.replace('AF_UNIX AF_INET AF_INET6','AF_UNIX AF_INET AF_INET6 AF_NETLINK')
 
 def units():
     return {
@@ -88,7 +89,7 @@ ExecStart=/usr/bin/python3 {CURRENT}/panel/backend.py
 Restart=on-failure
 RestartSec=3
 LimitNOFILE=1048576
-{HARDEN}PrivateDevices=true
+{MTPROXY_HARDEN}PrivateDevices=true
 [Install]
 WantedBy=multi-user.target
 ''',

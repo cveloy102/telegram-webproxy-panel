@@ -80,6 +80,7 @@ def restore_internal(path):
             if item.name.startswith('/') or '..' in P(item.name).parts:raise RuntimeError('Небезопасный путь в резервной копии.')
         archive.extractall('/')
     subprocess.run(['systemctl','daemon-reload'],check=True)
+    subprocess.run(['systemctl','reset-failed','mtproxy','tproxy-server','relay-helper','relay-panel'],check=True)
     subprocess.run(['systemctl','restart','mtproxy','tproxy-server','relay-helper','relay-panel','caddy','relay-refresh.timer'],check=True)
 
 def refresh():
