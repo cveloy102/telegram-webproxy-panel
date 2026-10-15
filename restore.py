@@ -1,0 +1,81 @@
+"""Explicit, portable disaster recovery into an already installed fresh VPS."""
+import argparse
+import contextlib
+import json
+import os
+from pathlib import Path
+import shutil
+import sqlite3
+import subprocess
+import sys
+import tempfile
+
+def restore_files(files,paths):
+    """Only logical data files are copied, never programs or executable config."""
+    mappings=[('telegram/users.json',paths['users'],'root','root',0o600),('telegram/usage.json',paths['usage'],'tproxy','relayadmin',0o640),('owner/auth.json',paths['owner']/'auth.json','relayadmin','relayadmin',0o600),('owner/panel.sqlite3',paths['owner']/'panel.sqlite3','relayadmin','relayadmin',0o600),('hysteria/hy2.sqlite3',paths['hy2']/'hy2.sqlite3','root','root',0o600)]
+    for name,target,user,group,mode in mappings:
+        source=files/name
+        if not source.exists():continue
+        target.parent.mkdir(parents=True,exist_ok=True)
+        for suffix in ('-wal','-shm','-journal'):
+            if target.name.endswith('.sqlite3'):Path(str(target)+suffix).unlink(missing_ok=True)
+        pending=target.with_name(target.name+'.restore');shutil.copyfile(source,pending);shutil.chown(pending,user,group);pending.chmod(mode);pending.replace(target)
+    for name,target in [('site',paths['site']),('hysteria/cover',paths['hy2cover'])]:
+        source=files/name
+        if source.exists():
+            if target.exists():shutil.rmtree(target)
+            shutil.copytree(source,target)
+            for p in [target,*target.rglob('*')]:
+                p.chmod(0o755 if p.is_dir() else 0o644)
+                if name.startswith('hysteria'):shutil.chown(p,'hysteria','hysteria')
+
+def main(argv=None):
+    if os.geteuid()!=0:raise ValueError('Восстановление запускается от root.')
+    parser=argparse.ArgumentParser(description='Восстановить зашифрованную копию Relay Panel')
+    parser.add_argument('archive',type=Path);parser.add_argument('--identity',type=Path,required=True);parser.add_argument('--inspect',action='store_true');args=parser.parse_args(argv)
+    sys.path.insert(0,str(Path(__file__).parent/'panel'))
+    from backup_archive import decrypt,layout
+    from installer import domain_name
+    os.umask(0o077)
+    with tempfile.TemporaryDirectory(prefix='relay-restore-',dir='/run') as tmp:
+        temp=Path(tmp);manifest=decrypt(args.archive,args.identity.read_text(),temp)
+        domain=domain_name(manifest['telegram_domain']);hy2=domain_name(manifest['hysteria_domain']) if manifest['hysteria'] else None
+        print('Дата копии (Unix):',manifest['created']);print('Telegram:',domain);print('Hysteria:',hy2 or 'нет')
+        if args.inspect:print('Копия расшифрована, манифест и базы проверены. Данные сервера не изменены.');return
+        current=json.loads(Path('/etc/relay-panel/install.json').read_text())
+        if current['domain']!=domain or hy2 and current.get('hy2_domain')!=hy2:raise ValueError('Установи панель с прежними доменами из копии. Новые IP допустимы, домены должны совпадать.')
+        if input('Будут заменены все ключи, история и вход владельца. Введи ВОССТАНОВИТЬ: ').strip()!='ВОССТАНОВИТЬ':print('Отменено.');return
+        import manage
+        services=['relay-backup','relay-panel','relay-helper','relay-hy2','hysteria-server','tproxy-server','mtproxy']
+        subprocess.run(['systemctl','stop',*services],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        before=manage.backup(include_programs=True);print('Копия состояния до восстановления:',before)
+        try:
+            paths=layout();restore_files(temp/'files',paths)
+            from helper import Controller
+            controller=Controller();controller.apply(controller.read())
+            if hy2:
+                from hy2_control import Controller as Hysteria
+                controller=Hysteria()
+                with controller.db() as c:
+                    c.execute('DELETE FROM samples');c.execute("UPDATE settings SET v=? WHERE k='epoch'",(json.dumps(''),))
+                    settings=controller.settings(c)
+                controller.apply_settings(settings)
+                current['hy2_port']=settings['port']
+                Path('/etc/relay-panel/install.json').write_text(json.dumps(current))
+            backup_source=temp/'files/backup';target=Path('/var/lib/relay-backup')
+            target.mkdir(mode=0o700,exist_ok=True)
+            for name in ('config.json','rclone.conf'):
+                source=backup_source/name
+                if source.exists():shutil.copyfile(source,target/name);(target/name).chmod(0o600)
+            # State is fresh: force an off-site snapshot of the restored data after restart.
+            (target/'state.json').unlink(missing_ok=True)
+            subprocess.run(['systemctl','restart','relay-helper','relay-panel','relay-backup'],check=True)
+            if hy2:subprocess.run(['systemctl','restart','relay-hy2','hysteria-server'],check=True)
+            print('Готово. Используй прежние пароль, 2FA и ключи. Проверь DNS обоих доменов и доступность UDP-порта',current.get('hy2_port','—'))
+        except Exception:
+            manage.restore_internal(before)
+            raise ValueError('Восстановление не завершено. Предыдущее состояние возвращено; проверь службы через relay-panel status.') from None
+
+if __name__=='__main__':
+    try:main()
+    except (ValueError,OSError) as error:print('Ошибка:',error,file=sys.stderr);sys.exit(1)

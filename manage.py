@@ -20,7 +20,7 @@ P=pathlib.Path
 DATA=P('/var/lib/relay-panel')
 ROOT=P('/etc/relay-panel')
 BACKUPS=P('/var/backups/relay-panel')
-NAMES=['relay-panel','relay-helper','tproxy-server','mtproxy','relay-refresh.timer']
+NAMES=['relay-backup','relay-hy2','hysteria-server','relay-panel','relay-helper','tproxy-server','mtproxy','relay-refresh.timer']
 
 def owner_exists():
     path=DATA/'panel.sqlite3'
@@ -49,23 +49,23 @@ def backup(include_programs=False):
     descriptor=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
     with tempfile.TemporaryDirectory(prefix='relay-backup-') as temp,os.fdopen(descriptor,'wb') as output,tarfile.open(fileobj=output,mode='w:gz') as archive:
         def no_database(item):
-            return None if item.name.endswith(('panel.sqlite3','panel.sqlite3-wal','panel.sqlite3-shm','panel.sqlite3-journal')) else item
-        paths=['/etc/relay-panel','/etc/tproxy-server','/etc/mtproxy','/etc/caddy/Caddyfile','/var/lib/relay-panel','/var/lib/tproxy-accounting','/var/lib/caddy','/usr/local/sbin/relay-panel']
+            return None if item.name.endswith(('panel.sqlite3','panel.sqlite3-wal','panel.sqlite3-shm','panel.sqlite3-journal','hy2.sqlite3','hy2.sqlite3-wal','hy2.sqlite3-shm','hy2.sqlite3-journal')) else item
+        paths=['/etc/hysteria','/var/lib/hysteria','/var/lib/relay-hy2','/var/lib/relay-backup','/srv/relay-site','/etc/systemd/system/relay-backup.service','/etc/systemd/system/relay-hy2.service','/etc/systemd/system/hysteria-server.service','/usr/local/bin/hysteria','/etc/relay-panel','/etc/tproxy-server','/etc/mtproxy','/etc/caddy/Caddyfile','/var/lib/relay-panel','/var/lib/tproxy-accounting','/var/lib/caddy','/usr/local/sbin/relay-panel']
         if include_programs:
             paths+=['/opt/relay-panel','/opt/MTProxy','/usr/local/bin/tproxy-server']
         from units import units
         paths += [str(P('/etc/systemd/system')/name) for name in units()]
         for source in paths:
             if P(source).exists():archive.add(source,arcname=source.lstrip('/'),filter=no_database)
-        database=DATA/'panel.sqlite3'
-        if database.exists():
-            target=P(temp)/'panel.sqlite3'
-            with contextlib.closing(sqlite3.connect(f'file:{database}?mode=ro',uri=True)) as source,contextlib.closing(sqlite3.connect(target)) as destination:source.backup(destination)
-            info=archive.gettarinfo(str(target),arcname='var/lib/relay-panel/panel.sqlite3')
-            import pwd,grp
-            stat=database.stat();info.uid=stat.st_uid;info.gid=stat.st_gid;info.mode=0o600
-            info.uname=pwd.getpwuid(stat.st_uid).pw_name;info.gname=grp.getgrgid(stat.st_gid).gr_name
-            with open(target,'rb') as file:archive.addfile(info,file)
+        for database in (DATA/'panel.sqlite3',P('/var/lib/relay-hy2/hy2.sqlite3')):
+            if database.exists():
+                target=P(temp)/database.name
+                with contextlib.closing(sqlite3.connect(f'file:{database}?mode=ro',uri=True)) as source,contextlib.closing(sqlite3.connect(target)) as destination:source.backup(destination)
+                info=archive.gettarinfo(str(target),arcname=str(database).lstrip('/'))
+                import pwd,grp
+                stat=database.stat();info.uid=stat.st_uid;info.gid=stat.st_gid;info.mode=0o600
+                info.uname=pwd.getpwuid(stat.st_uid).pw_name;info.gname=grp.getgrgid(stat.st_gid).gr_name
+                with open(target,'rb') as file:archive.addfile(info,file)
     return path
 
 def restore_internal(path):
@@ -102,6 +102,9 @@ def main():
         print('Relay Panel '+state.get('version','· установка не завершена')+'\nhttps://'+state['domain']+'/control/')
         subprocess.run(['systemctl','--no-pager','--full','status',*NAMES,'caddy'],check=False)
     elif command=='backup':print('Копия с ключами и настройками (храни как пароль): '+str(backup()))
+    elif command=='restore':
+        from restore import main as restore
+        restore(sys.argv[2:])
     elif command=='setup-code':
         if owner_exists():raise RuntimeError('Владелец уже создан. Этот пункт не сбрасывает пароль или 2FA.')
         from installer import json_write,write

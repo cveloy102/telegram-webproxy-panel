@@ -23,7 +23,7 @@ import urllib.request
 
 from units import units, caddyfile, FIREWALL
 
-VERSION='0.1.0-beta.1'
+VERSION='0.2.0-beta.1'
 RELAY_COMMIT='c8adb8b7c6b7fc46c12ae3acb68be9070c26a8e8'
 RELAY_SHA256='a78b48f536180143dd7005785ca397310c36ee0b132e19949a45d64f586ab549'
 MTPROXY_COMMIT='f36d8af769ffaeac36978d38c2c0f6d1104c2137'
@@ -162,11 +162,11 @@ def packages():
     print('Устанавливаю системные пакеты. Подробности: '+str(LOG))
     env={**os.environ,'DEBIAN_FRONTEND':'noninteractive'}
     run('apt-get','update',env=env)
-    run('apt-get','-o','Dpkg::Options::=--force-confold','install','-y','--no-install-recommends','ca-certificates','curl','build-essential','golang-go','libssl-dev','zlib1g-dev','nftables','iproute2','patch','caddy','python3-flask','python3-qrcode','python3-pil','gunicorn',env=env)
+    run('apt-get','-o','Dpkg::Options::=--force-confold','install','-y','--no-install-recommends','ca-certificates','curl','build-essential','golang-go','libssl-dev','zlib1g-dev','nftables','iproute2','patch','caddy','python3-flask','python3-qrcode','python3-pil','gunicorn','python3-yaml','age','rclone',env=env)
 
 def users():
     import pwd
-    for name,home in [('relayadmin','/var/lib/relay-panel'),('tproxy','/nonexistent'),('mtproxy','/nonexistent')]:
+    for name,home in [('relayadmin','/var/lib/relay-panel'),('tproxy','/nonexistent'),('mtproxy','/nonexistent'),('hysteria','/var/lib/hysteria')]:
         try:pwd.getpwnam(name)
         except KeyError:run('useradd','--system','--home-dir',home,'--shell','/usr/sbin/nologin',name)
 
@@ -243,7 +243,11 @@ def install_files(source,options,work,candidate,mtproxy):
     current=BASE/'current';new=BASE/'next';new.unlink(missing_ok=True);new.symlink_to(release,target_is_directory=True);new.replace(current)
     for name,contents in units().items():write(P('/etc/systemd/system')/name,contents)
     write('/usr/local/sbin/relay-panel','#!/bin/sh\nexec /usr/bin/python3 /opt/relay-panel/current/manage.py "$@"\n',mode=0o755)
-    write('/etc/caddy/Caddyfile',caddyfile(options['domain'],options['email']))
+    from backup_install import install as install_backup
+    from hysteria_install import install as install_hysteria,caddy as hy2_caddy
+    install_backup(sys.modules[__name__])
+    install_hysteria(sys.modules[__name__],options,work)
+    write('/etc/caddy/Caddyfile',caddyfile(options['domain'],options['email'])+(hy2_caddy(options['hy2_domain']) if options.get('hy2_domain') else ''))
     run('caddy','validate','--config','/etc/caddy/Caddyfile','--adapter','caddyfile')
     run('/usr/local/bin/tproxy-server','-config','/etc/tproxy-server/config.json','-profiles-file','/etc/tproxy-server/profiles.json','-check')
     run('systemd-analyze','verify',*[str(P('/etc/systemd/system')/name) for name in units()])
@@ -257,6 +261,9 @@ def activate():
     run('systemctl','start','relay-refresh.timer')
     run('systemctl','enable','--now','caddy')
     run('systemctl','restart','caddy')
+    run('systemctl','enable','--now','relay-backup')
+    from hysteria_install import activate as activate_hysteria
+    activate_hysteria(sys.modules[__name__],json.loads(STATE.read_text()))
 
 def health(domain,public=True):
     for _ in range(25):
@@ -316,6 +323,13 @@ def main():
         email=ask('Email для сертификата (необязательно)','')
         if email and not re.fullmatch(r'[A-Za-z0-9._+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}',email):raise RuntimeError('Некорректный email.')
         options.update(domain=domain,ip=address,email=email,phase='preparing')
+        if ask('Установить также Hysteria 2? да / нет','да').lower() in ('да','yes','y'):
+            hy2_domain=ask('Отдельный домен Hysteria (например hy2.example.com)',validate=domain_name)
+            if hy2_domain==domain:raise RuntimeError('Для Hysteria нужен отдельный поддомен.')
+            check_dns(hy2_domain,address)
+            port=int(ask('UDP-порт Hysteria','24443'))
+            if not 1024<=port<=65535:raise RuntimeError('Нужен UDP-порт от 1024 до 65535.')
+            options.update(hy2_domain=hy2_domain,hy2_port=port)
     print('\nПрокси: '+options['domain']+'\nПанель: https://'+options['domain']+'/control/')
     print('Будут установлены MTProxy, релей, Caddy, панель и автозапуск. Настройка займёт несколько минут.')
     if ask('Начать? да / нет','нет').lower() not in ('да','yes','y'):print('Отменено.');return

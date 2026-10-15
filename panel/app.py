@@ -1,3 +1,4 @@
+from backup_notify import changed as backup_changed
 import base64
 import datetime as dt
 import hashlib
@@ -81,6 +82,12 @@ def owner():
 
 def authorized():
     return session.get('owner') is True and bool(owner() and owner()['verified'])
+
+from hy2_routes import register as register_hysteria
+register_hysteria(app,authorized,csrf)
+
+from backup_routes import register as register_backups
+register_backups(app,authorized,csrf)
 
 @app.before_request
 def protect():
@@ -350,6 +357,7 @@ def api_settings():
         abort(400)
     with db() as conn:
         conn.execute('UPDATE settings SET networks=?,traffic_gb=?,minutes=? WHERE id=1',values)
+    backup_changed('settings')
     return jsonify(ok=True)
 
 @app.post(PREFIX+'/api/ack')
@@ -363,7 +371,7 @@ def api_ack():
 
 @app.get(PREFIX+'/static/<path:name>')
 def assets(name):
-    if name not in ('panel.css','panel.js'):
+    if name not in ('panel.css','panel.js','hysteria.css','hysteria.js','backups.js'):
         abort(404)
     return app.send_static_file(name)
 
