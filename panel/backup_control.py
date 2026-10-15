@@ -68,7 +68,7 @@ class Controller:
             self.dirty();return self.status()
         if op=='manual':
             if not self.ready():raise ValueError('Сначала укажи папку, публичный ключ и подключи Google Диск.')
-            self.dirty();self.state['manual']=True;self.save();return self.status()
+            self.dirty();self.state['manual']=True;self.state['last_attempt']=0;self.save();return self.status()
         raise ValueError('Неизвестная операция.')
     def ready(self):return bool(self.config['folder'] and self.config['recipient'] and (self.data/'rclone.conf').exists())
     def rclone(self,*args):
@@ -126,7 +126,7 @@ class Controller:
             pending=self.state['generation']>self.state['saved_generation'];now=time.time()
             due=now-self.state['uploaded']>86400 or pending
             enabled=self.config['automatic'] or self.state.get('manual')
-            retry=now-self.state['last_attempt']>60
+            retry=not self.state['error'] or now-self.state['last_attempt']>60
             settled=now-self.state.get('changed',0)>10
         if self.ready() and enabled and due and retry and settled:self.snapshot()
 

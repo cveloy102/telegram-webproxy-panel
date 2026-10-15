@@ -371,7 +371,7 @@ def api_ack():
 
 @app.get(PREFIX+'/static/<path:name>')
 def assets(name):
-    if name not in ('panel.css','panel.js','hysteria.css','hysteria.js','backups.js'):
+    if name not in ('panel.css','panel.js','hysteria.css','hysteria.js','backups.js','backups.css'):
         abort(404)
     return app.send_static_file(name)
 

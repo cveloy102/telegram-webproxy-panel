@@ -82,6 +82,10 @@ def restore_internal(path):
     subprocess.run(['systemctl','daemon-reload'],check=True)
     subprocess.run(['systemctl','reset-failed','mtproxy','tproxy-server','relay-helper','relay-panel'],check=True)
     subprocess.run(['systemctl','restart','mtproxy','tproxy-server','relay-helper','relay-panel','caddy','relay-refresh.timer'],check=True)
+    optional=[name for name in ('relay-backup','relay-hy2','hysteria-server') if P('/etc/systemd/system/'+name+'.service').exists()]
+    if optional:
+        subprocess.run(['systemctl','reset-failed',*optional],check=True)
+        subprocess.run(['systemctl','restart',*optional],check=True)
 
 def refresh():
     # Download once and replace only after format checks; preserve the last good config on failure.

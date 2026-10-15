@@ -1,0 +1,10 @@
+#fsociety-preview a.fc-button{color:var(--fc-text);text-decoration:none;display:inline-flex;align-items:center}
+#fsociety-preview #backup-settings .fc-rule{grid-template-columns:minmax(0,1fr) minmax(220px,420px);align-items:center}
+#fsociety-preview #backup-settings input:not([type=checkbox]){min-width:0;align-self:center;height:44px}
+#fsociety-preview #backup-settings .fc-rule:has(input[type=checkbox]){display:block}
+#fsociety-preview details.fc-rule{display:block}
+#fsociety-preview details.fc-rule summary{cursor:pointer;padding:8px 0}
+#fsociety-preview #backup-connect textarea{width:100%;box-sizing:border-box;background:var(--fc-bg);color:inherit;border:1px solid var(--fc-line);padding:12px;resize:vertical;font:inherit}
+#fsociety-preview #backup-error{color:var(--fc-red)}
+#fsociety-preview code{overflow-wrap:anywhere}
+@media(max-width:720px){#fsociety-preview #backup-settings .fc-rule{grid-template-columns:minmax(0,1fr)}#fsociety-preview .fc-header{gap:12px}}

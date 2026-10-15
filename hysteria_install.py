@@ -78,7 +78,8 @@ WantedBy=multi-user.target
 
 def activate(setup,options):
     if not options.get('hy2_domain'):return
-    setup.run('systemctl','enable','--now','relay-hy2')
+    setup.run('systemctl','enable','relay-hy2')
+    setup.run('systemctl','restart','relay-hy2')
     import sys
     sys.path.insert(0,str(Path('/opt/relay-panel/current/panel')))
     from hy2_control import Controller
@@ -88,6 +89,8 @@ def activate(setup,options):
     # Write config before first startup, then let systemd retry ACME independently.
     import yaml
     cfg=yaml.safe_load(controller.config.read_text())
-    cfg.update(auth={'type':'http','http':{'url':'http://127.0.0.1:8083/auth/'+settings['auth_token']}},trafficStats={'listen':'127.0.0.1:9998','secret':settings['api_secret']},masquerade={'type':'file','file':{'dir':'/var/lib/hysteria/cover'}})
+    cfg.update(auth={'type':'http','http':{'url':'http://127.0.0.1:8083/auth/'+settings['auth_token']}},trafficStats={'listen':'127.0.0.1:9998','secret':settings['api_secret']})
+    cfg.setdefault('masquerade',{'type':'file','file':{'dir':'/var/lib/hysteria/cover'}})
     setup.write(controller.config,yaml.safe_dump(cfg),mode=0o640,group='hysteria')
-    setup.run('systemctl','enable','--now','hysteria-server')
+    setup.run('systemctl','enable','hysteria-server')
+    setup.run('systemctl','restart','hysteria-server')

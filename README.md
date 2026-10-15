@@ -37,6 +37,9 @@ bash <(curl -fsSL https://raw.githubusercontent.com/cveloy102/telegram-webproxy-
 Telegram для кнопки связи: [можно пропустить]
 Тема страницы: [1 — пиксельная, 2 — нейтральная]
 Email для сертификата: [можно пропустить]
+Установить также Hysteria 2? [да / нет]
+Отдельный домен Hysteria: hy2.example.com
+UDP-порт Hysteria: [24443]
 Начать? да / нет
 ```
 

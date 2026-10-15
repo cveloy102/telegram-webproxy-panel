@@ -11,7 +11,7 @@ For a suspected vulnerability, use the repository's **Security â†’ Advisories â†
 - The owner code grants initial setup access. Keep it private. It expires after 24 hours and is rejected after an owner exists.
 - The landing page has no link to the panel; the panel URL is not a substitute for authentication.
 - Login rate limiting affects administrator login only. Suspicion warnings do not automatically sanction proxy users.
-- Data is stored on the VPS. Removing a profile revokes its access but does not erase all historical accounting or backups.
+- Data is stored on the VPS. Optional backups upload age-encrypted snapshots to the owner's Google Drive folder. The server stores only the public encryption recipient; keep the private recovery identity separately. The rclone OAuth grant can access the entire Drive, although the daemon restricts its operations to the configured folder. Removing a profile does not erase historical backups or their copies of that profile's secrets.
 - Upstream dependencies and OS security updates remain part of the operator's responsibility.
 
 Only use an expendable GitHub Actions runner for `tests/smoke_ubuntu.py`: it installs software and changes system configuration. Never run it on a personal workstation or production VPS.
