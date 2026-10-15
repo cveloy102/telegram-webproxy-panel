@@ -87,7 +87,8 @@ class Controller:
             self.rclone('copyto',str(path),'backup-drive:'+name)
             remote=json.loads(self.rclone('lsjson','--stat','--hash','backup-drive:'+name))
             md5=hashlib.md5(path.read_bytes()).hexdigest()
-            if remote.get('Size')!=path.stat().st_size or remote.get('Hashes',{}).get('MD5')!=md5:raise ValueError('Google Диск не подтвердил целостность копии; загрузка будет повторена.')
+            hashes={k.lower():v for k,v in remote.get('Hashes',{}).items()}
+            if remote.get('Size')!=path.stat().st_size or hashes.get('md5')!=md5:raise ValueError('Google Диск не подтвердил целостность копии; загрузка будет повторена.')
             with self.lock:
                 self.state.update(saved_generation=generation,uploaded=int(time.time()),created=metadata['created'],file=name,error='')
                 if self.state['generation']==generation:self.state['manual']=False

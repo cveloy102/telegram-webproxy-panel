@@ -18,6 +18,7 @@ from backup_control import Controller,folder_id
 class Backups(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup);self.root=Path(self.temp.name)
+        env=patch.dict(os.environ,{'RELAY_BACKUP_TMP':str(self.root)});env.start();self.addCleanup(env.stop)
         self.paths={k:self.root/k for k in ('users','owner','hy2','usage','site','hy2config','hy2cover')}
         for k in ('owner','hy2','site','hy2cover'):self.paths[k].mkdir()
         self.paths['users'].write_text(json.dumps({'host':'proxy.example.com','users':[{'id':'default','secret':'a'*32,'enabled':True}]}))
@@ -60,6 +61,15 @@ class Backups(unittest.TestCase):
         self.assertEqual(folder_id('https://drive.google.com/drive/folders/synthetic_folder_123?hl=ru'),'synthetic_folder_123')
         for value in ('https://evil.example/folders/id','../../etc/passwd','bad;touch /tmp/a'):
             with self.assertRaises(ValueError):folder_id(value)
+    def test_upload_hash_case_and_concurrent_change(self):
+        import hashlib
+        for label in ('md5','MD5'):
+            control=Controller(self.root/label,self.paths);control.dirty()
+            def snapshot(path,*args):
+                path.write_bytes(b'encrypted');control.dirty();return {'created':1}
+            remote={'Size':9,'Hashes':{label:hashlib.md5(b'encrypted').hexdigest()}}
+            with patch('backup_control.encrypt',side_effect=snapshot),patch.object(control,'rclone',side_effect=[b'',json.dumps(remote).encode()]):control.snapshot()
+            self.assertGreater(control.status()['uploaded'],0);self.assertTrue(control.status()['pending'])
     @unittest.skipUnless(shutil.which('age') and shutil.which('age-keygen'),'age needs Linux test dependencies')
     def test_encrypted_roundtrip_wrong_key_and_no_plaintext(self):
         key=self.root/'key.txt';subprocess.run(['age-keygen','-o',str(key)],check=True,capture_output=True)
