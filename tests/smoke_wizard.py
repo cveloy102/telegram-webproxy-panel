@@ -4,10 +4,13 @@ import json
 import os
 from pathlib import Path
 import shutil
+import socket
 import ssl
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import urllib.request
 from unittest.mock import patch
 
@@ -128,6 +131,35 @@ with tempfile.TemporaryDirectory(prefix='relay-wizard-smoke-') as folder:
         assert before==Path('/etc/relay-panel/users.json').read_bytes()
         assert auth==Path('/var/lib/relay-panel/auth.json').read_bytes()
         setup.health('relay.example.com',public=False)
+        # Authenticate a real QUIC client using the recovered key, not just /online.
+        from hy2_control import Controller
+        from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
+        import yaml
+        controller=Controller()
+        with controller.db() as db:
+            secret=db.execute("SELECT secret FROM users WHERE id='default'").fetchone()[0]
+            settings=controller.settings(db)
+        class Response(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200);self.end_headers();self.wfile.write(b'wizard-recovered-key-ok')
+            def log_message(self,*args):pass
+        http=ThreadingHTTPServer(('127.0.0.1',0),Response)
+        threading.Thread(target=http.serve_forever,daemon=True).start()
+        with socket.socket() as reservation:
+            reservation.bind(('127.0.0.1',0));socks_port=reservation.getsockname()[1]
+        config={'server':'127.0.0.1:'+str(settings['port']),'auth':secret,
+                'tls':{'sni':'hy2.example.com','insecure':True},'socks5':{'listen':'127.0.0.1:'+str(socks_port)}}
+        if settings['obfs']:config['obfs']={'type':'salamander','salamander':{'password':settings['obfs_password']}}
+        client_config=work/'client.yaml';client_config.write_text(yaml.safe_dump(config));client_config.chmod(0o600)
+        client=subprocess.Popen(['/usr/local/bin/hysteria','client','--config',str(client_config)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        try:
+            for _ in range(20):
+                result=subprocess.run(['curl','--fail','--silent','--max-time','3','--noproxy','','--proxy','socks5h://127.0.0.1:'+str(socks_port),'http://127.0.0.1:'+str(http.server_port)+'/'],capture_output=True)
+                if result.returncode==0:
+                    assert result.stdout==b'wizard-recovered-key-ok';break
+                time.sleep(1)
+            else:raise AssertionError('Recovered Hysteria key did not carry traffic')
+        finally:client.terminate();client.wait(timeout=10);http.shutdown()
         # A third invocation must never replace a completed installation.
         with patch.object(setup,'preflight',side_effect=AssertionError('Completed session reinstalled')):
             wizard.run_wizard(SOURCE,'wizard-smoke',setup=setup)
