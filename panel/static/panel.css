@@ -5,7 +5,7 @@
 #fsociety-preview .fc button{cursor:var(--cursor-interaction,pointer)}
 #fsociety-preview .fc button:focus-visible,#fsociety-preview .fc input:focus-visible,#fsociety-preview .fc select:focus-visible{outline:2px solid var(--fc-red);outline-offset:3px}
 #fsociety-preview .fc [hidden]{display:none!important}
-#fsociety-preview .fc-header{padding:24px 110px 20px 26px;display:flex;align-items:center;gap:16px;border-bottom:1px solid var(--fc-line)}
+#fsociety-preview .fc-header{padding:24px 110px 20px 26px;display:flex;flex-wrap:wrap;align-items:center;gap:16px;border-bottom:1px solid var(--fc-line)}
 #fsociety-preview .fc-logo{display:grid;grid-template-columns:repeat(3,7px);gap:3px;transform:rotate(-5deg);flex-shrink:0}
 #fsociety-preview .fc-logo b{height:7px;background:var(--fc-red)}
 #fsociety-preview .fc-logo b:nth-child(5){background:transparent}

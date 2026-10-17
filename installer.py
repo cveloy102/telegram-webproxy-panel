@@ -33,7 +33,7 @@ P=pathlib.Path
 BASE=P('/opt/relay-panel')
 STATE=P('/etc/relay-panel/install.json')
 LOG=P('/var/log/relay-panel-install.log')
-SERVICES=['relay-panel','relay-helper','tproxy-server','mtproxy','relay-refresh.timer']
+SERVICES=['relay-panel','relay-helper','tproxy-server','mtproxy','relay-refresh.timer','relay-awg','amneziawg-server','relay-hy2','hysteria-server','relay-backup']
 
 
 def open_install_lock():
@@ -418,7 +418,7 @@ def main():
         if choice=='1':
             health(existing['domain']);existing['phase']='complete';json_write(STATE,existing,mode=0o600);show_access();return
         if choice!='3':raise RuntimeError('Неизвестный пункт меню.')
-        options=existing
+        options=dict(existing)
         if not options.get('awg_domain'):
             from amnezia_install import ask_options
             ask_options(sys.modules[__name__],options)
@@ -434,7 +434,8 @@ def main():
     print('\nПрокси: '+options['domain']+'\nПанель: https://'+options['domain']+'/control/')
     print('Будут установлены MTProxy, релей, Caddy, панель и автозапуск. Настройка займёт несколько минут.')
     if ask('Начать? да / нет','нет',yes_no)!='да':print('Отменено.');return
-    directory('/etc/relay-panel',mode=0o700);json_write(STATE,options,mode=0o600)
+    directory('/etc/relay-panel',mode=0o700)
+    if not existing:json_write(STATE,options,mode=0o600)
     packages();users()
     with tempfile.TemporaryDirectory(prefix='relay-panel-build-',dir='/var/tmp') as folder:
         work=P(folder);candidate,mtproxy=build(args.source.resolve(),work)
@@ -446,6 +447,8 @@ def main():
             snapshot=backup(include_programs=True)
             print('Резервная копия: '+str(snapshot))
         try:
+            # The rollback archive must contain the previous protocol selection.
+            json_write(STATE,options,mode=0o600)
             install_files(args.source.resolve(),options,work,candidate,mtproxy)
             activate()
             health(options['domain'],public=False)
