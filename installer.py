@@ -147,22 +147,16 @@ def new_options():
         return value
     email=ask('Email для сертификата (например name@example.com; необязательно)','',valid_email)
     options.update(domain=domain,ip=address,email=email,phase='preparing')
-    if ask('Установить также Hysteria 2? да / нет','да',yes_no)=='да':
-        def hy2_host(value):
-            host=domain_name(value)
-            if host==domain:raise ValueError('Для Hysteria нужен другой поддомен, например hy2.example.com.')
-            return host
-        hy2_domain=ask('Отдельный домен Hysteria (например hy2.example.com, без https:// и пути)',validate=hy2_host)
-        check_dns(hy2_domain,address)
-        def valid_port(value):
-            if not value.isascii() or not value.isdecimal() or not 1024<=int(value)<=65535:
-                raise ValueError('Введи номер UDP-порта от 1024 до 65535 или нажми Enter для 24443.')
-            return int(value)
-        port=ask('UDP-порт Hysteria (число от 1024 до 65535)','24443',valid_port)
-        options.update(hy2_domain=hy2_domain,hy2_port=port)
-    from amnezia_install import ask_options
-    ask_options(sys.modules[__name__],options)
+    optional_protocols(options)
     return options
+
+def optional_protocols(options):
+    """The same add-only dialogue for fresh installs and older panel versions."""
+    from hysteria_install import ask_options as hysteria_options
+    from amnezia_install import ask_options as amnezia_options
+    hysteria_options(sys.modules[__name__],options)
+    amnezia_options(sys.modules[__name__],options)
+
 
 def download(url,path,checksum=None):
     error=None
@@ -419,9 +413,7 @@ def main():
             health(existing['domain']);existing['phase']='complete';json_write(STATE,existing,mode=0o600);show_access();return
         if choice!='3':raise RuntimeError('Неизвестный пункт меню.')
         options=dict(existing)
-        if not options.get('awg_domain'):
-            from amnezia_install import ask_options
-            ask_options(sys.modules[__name__],options)
+        optional_protocols(options)
     else:
         choice=ask('1 — новая установка, 2 — восстановить из резервной копии, 0 — выход','1')
         if choice=='0':return

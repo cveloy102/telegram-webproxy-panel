@@ -33,6 +33,10 @@ def wait_ready():
 
 with tempfile.TemporaryDirectory(prefix='relay-awg-smoke-',dir='/var/tmp') as folder:
     work=Path(folder);options=json.loads(setup.STATE.read_text())
+    hysteria_before={}
+    if options.get('hy2_domain'):
+        from hy2_routes import helper as hysteria
+        hysteria_before={u['id']:hysteria({'op':'key','id':u['id']})['uri'] for u in hysteria({'op':'status'})['users']}
     options.update(awg_domain='vpn.example.com',awg_port=51820)
     setup.json_write(setup.STATE,options,mode=0o600)
     amnezia_install.install(setup,options,work)
@@ -129,6 +133,8 @@ with tempfile.TemporaryDirectory(prefix='relay-awg-smoke-',dir='/var/tmp') as fo
         wait_ready();curl()
         for uid,conf in original.items():assert helper({'op':'key','id':uid})['conf']==conf
         assert len(helper({'op':'status'})['users'])==2
+        if hysteria_before:
+            assert hysteria_before=={u['id']:hysteria({'op':'key','id':u['id']})['uri'] for u in hysteria({'op':'status'})['users']}
         setup.health(options['domain'],public=False)
         print('PASS: AWG real tunnel, counters, revoke, limits, restart, standby and encrypted restore with original configs')
     finally:

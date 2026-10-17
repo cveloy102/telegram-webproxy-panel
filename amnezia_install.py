@@ -30,6 +30,7 @@ def extract_tools(setup,archive,work):
 
 
 def ask_options(setup,options):
+    if options.get('awg_domain'):return
     if setup.ask('Установить также AmneziaWG 3.1? да / нет','нет',setup.yes_no)!='да':return
     host=setup.ask('Домен AmneziaWG (например vpn.example.com)',validate=setup.domain_name)
     setup.check_dns(host,options['ip'])

@@ -6,6 +6,29 @@ from units import HARDEN,CURRENT
 VERSION='2.13.0'
 SHA256='907ba8c9693edb104b20582681fb7dc15639d5b64a9cbb616a7b539190a86691'
 
+
+def ask_options(setup,options):
+    if options.get('hy2_domain'):return
+    if setup.ask('Установить также Hysteria 2? да / нет','да',setup.yes_no)!='да':return
+    def host(value):
+        value=setup.domain_name(value)
+        if value==options['domain']:raise ValueError('Для Hysteria нужен другой поддомен, например hy2.example.com.')
+        return value
+    domain=setup.ask('Отдельный домен Hysteria (например hy2.example.com, без https:// и пути)',validate=host)
+    setup.check_dns(domain,options['ip'])
+    def port(value):
+        if not value.isascii() or not value.isdecimal() or not 1024<=int(value)<=65535:
+            raise ValueError('Введи номер UDP-порта от 1024 до 65535 или нажми Enter для 24443.')
+        value=int(value)
+        if value==options.get('awg_port'):raise ValueError('Порт уже выбран для AmneziaWG')
+        return value
+    number=setup.ask('UDP-порт Hysteria (число от 1024 до 65535)','24443',port)
+    import socket
+    with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as probe:
+        try:probe.bind(('0.0.0.0',number))
+        except OSError:raise ValueError('UDP-порт уже занят') from None
+    options.update(hy2_domain=domain,hy2_port=number)
+
 def caddy(domain):
     return '\nhttp://'+domain+''' {
  handle /.well-known/acme-challenge/* {
