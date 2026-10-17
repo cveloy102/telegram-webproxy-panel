@@ -197,6 +197,6 @@ class Migration:
 
     def standby(self):
         """Called by root restore after data import, without requiring a cloud backup."""
-        self.write('blocked', b'')
         self.data.update(phase='standby', step='Данные восстановлены. Переключи DNS и включи новый сервер.', error='', previous={name:True for name in self.inventory() if name != 'relay-refresh.service'})
         self.save()
+        self.write('blocked', b'')

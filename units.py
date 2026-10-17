@@ -164,9 +164,12 @@ def caddyfile(domain,email=''):
    }
   }
  }
- handle_errors 502 503 {
-  rewrite * /maintenance
-  reverse_proxy 127.0.0.1:8082
+ handle_errors {
+  @proxy_error expression {http.error.status_code} == 502 || {http.error.status_code} == 503
+  handle @proxy_error {
+   rewrite * /maintenance
+   reverse_proxy 127.0.0.1:8082
+  }
  }
 }
 '''
