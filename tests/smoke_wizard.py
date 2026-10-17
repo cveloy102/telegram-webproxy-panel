@@ -123,6 +123,9 @@ with tempfile.TemporaryDirectory(prefix='relay-wizard-smoke-') as folder:
         assert before==Path('/etc/relay-panel/users.json').read_bytes()
         assert auth==Path('/var/lib/relay-panel/auth.json').read_bytes()
         for name in SERVICES:
+            # Optional protocol units need not exist in a Telegram/Hysteria-only fixture.
+            load=subprocess.run(['systemctl','show',name,'-p','LoadState','--value'],capture_output=True,text=True)
+            if load.stdout.strip() in ('','not-found'):continue
             subprocess.run(['systemctl','start',name],check=True)
             assert not active(name),name
         # Simulate terminal loss while DNS has drifted: no key or reimport allowed.

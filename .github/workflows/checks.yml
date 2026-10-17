@@ -35,10 +35,22 @@ jobs:
         run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_wizard.py
       - name: Migration stop, retry, resume and standby recovery on expendable Ubuntu runner
         run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_migration.py
-      - name: AmneziaWG 3.1 real tunnel, revocation and encrypted recovery
-        run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_awg.py
       - name: Installer and VPN diagnostics on failure
         if: failure()
         run: |
           sudo tail -n 100 /var/log/relay-panel-install.log || true
           sudo journalctl --no-pager -n 60 -u relay-panel -u relay-helper -u tproxy-server -u mtproxy -u caddy -u amneziawg-server -u relay-awg || true
+  amnezia:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare panel on expendable Ubuntu runner
+        run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_ubuntu.py
+      - name: AmneziaWG 3.1 real tunnel, quotas, rollback and encrypted recovery
+        run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_awg.py
+      - name: VPN diagnostics on failure
+        if: failure()
+        run: |
+          sudo tail -n 120 /var/log/relay-panel-install.log || true
+          sudo journalctl --no-pager -n 120 -u amneziawg-server -u relay-awg || true
