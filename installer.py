@@ -24,7 +24,7 @@ import urllib.request
 
 from units import units, caddyfile, FIREWALL
 
-VERSION='0.4.0-beta.3'
+VERSION='0.4.0-beta.4'
 RELAY_COMMIT='c8adb8b7c6b7fc46c12ae3acb68be9070c26a8e8'
 RELAY_SHA256='a78b48f536180143dd7005785ca397310c36ee0b132e19949a45d64f586ab549'
 MTPROXY_COMMIT='f36d8af769ffaeac36978d38c2c0f6d1104c2137'
@@ -80,9 +80,30 @@ def render_site(options):
 <style>*{{box-sizing:border-box}}body{{margin:0;background:{background};color:#eee;{style}}}main{{max-width:850px;margin:12vh auto;padding:32px}}.mark{{color:{color};font-size:40px;letter-spacing:6px}}small{{color:#999}}h1{{font-size:clamp(32px,7vw,64px);overflow-wrap:anywhere;font-weight:600}}p{{color:#aaa;line-height:1.7}}.button{{display:inline-block;margin-top:24px;padding:18px 24px;background:{color};color:#101112;text-decoration:none;font-weight:700}}.button:focus-visible{{outline:3px solid white;outline-offset:5px}}footer{{margin-top:80px;padding-top:20px;border-top:1px solid #333;color:#888;font-size:12px}}</style>
 <main><div class="mark" aria-hidden="true">▪ ▪ ▪<br>▪ ▪ ▪</div><small>PERSONAL SPACE</small><h1>{title}</h1><p>На связи.</p>{button}<footer>Своя маленькая часть интернета.</footer></main></html>'''
 
+@contextlib.contextmanager
+def console_mode():
+    """Use visible Unicode-aware line input, preserving the caller's tty mode."""
+    if os.name!='posix' or not sys.stdin.isatty():
+        yield;return
+    import termios
+    descriptor=sys.stdin.fileno()
+    original=termios.tcgetattr(descriptor)
+    settings=original.copy()
+    settings[0]=(settings[0]|termios.ICRNL)&~(termios.IGNCR|termios.INLCR)
+    # Linux IUTF8 is not exported by Python termios on Ubuntu 24.04.
+    # It makes canonical Backspace erase a full character rather than one byte.
+    if sys.platform.startswith('linux'):settings[0]|=0x4000
+    settings[3]|=termios.ICANON|termios.ECHO|termios.ECHOE|termios.ECHOK
+    termios.tcsetattr(descriptor,termios.TCSANOW,settings)
+    try:yield
+    finally:termios.tcsetattr(descriptor,termios.TCSANOW,original)
+
+
 def ask(prompt,default=None,validate=None):
+    hint=f' [Enter — {default}]' if default else (' [Enter — пропустить]' if default=='' else '')
     while True:
-        try:value=input(prompt+(f' [{default}]' if default is not None else '')+': ').strip()
+        try:
+            with console_mode():value=input(prompt+hint+': ').strip()
         except EOFError:raise RuntimeError('Нужна интерактивная консоль. Открой терминал VPS и повтори команду.') from None
         except UnicodeDecodeError:
             print('  Не удалось прочитать ввод в UTF-8. Выбери кодировку UTF-8 в терминале и введи значение заново. Попробуй набрать его вручную вместо вставки.')
@@ -90,6 +111,53 @@ def ask(prompt,default=None,validate=None):
         if not value and default is not None:value=default
         try:return validate(value) if validate else value
         except ValueError as error:print('  '+str(error))
+
+
+def yes_no(value):
+    value=value.lower()
+    if value in ('да','yes','y'):return 'да'
+    if value in ('нет','no','n'):return 'нет'
+    raise ValueError('Введи да или нет (также можно yes или no). Enter выбирает ответ из подсказки.')
+
+
+def new_options():
+    domain=ask('Адрес прокси (например tg.example.com, без https:// и пути)',validate=domain_name)
+    detected=public_ipv4()
+    def valid_ip(value):
+        if not ipaddress.IPv4Address(value).is_global:raise ValueError('Нужен публичный IPv4 этого VPS из кабинета хостинга.')
+        return value
+    print('Сверь IP с кабинетом хостинга. Если предложенный адрес верный, просто нажми Enter.')
+    address=ask('Публичный IPv4 этого VPS',detected or None,valid_ip)
+    print('Проверяю DNS…');check_dns(domain,address)
+    title=ask('Название страницы (можно по-русски)', 'Свои люди',
+              validate=lambda value:site_options(value,'','pixel')['title'])
+    contact=ask('Telegram для кнопки связи (@username или username; пусто — без кнопки)', '',
+                validate=lambda value:site_options(title,value,'pixel')['contact'])
+    def valid_theme(value):
+        if value not in ('1','2'):raise ValueError('Введи 1 для пиксельной темы или 2 для нейтральной.')
+        return value
+    theme=ask('Тема страницы: 1 — тёмная пиксельная, 2 — нейтральная','1',valid_theme)
+    options=site_options(title,contact,'pixel' if theme=='1' else 'minimal')
+    def valid_email(value):
+        if value and not re.fullmatch(r'[A-Za-z0-9._+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}',value):
+            raise ValueError('Нужен email вида name@example.com или Enter, чтобы пропустить.')
+        return value
+    email=ask('Email для сертификата (например name@example.com; необязательно)','',valid_email)
+    options.update(domain=domain,ip=address,email=email,phase='preparing')
+    if ask('Установить также Hysteria 2? да / нет','да',yes_no)=='да':
+        def hy2_host(value):
+            host=domain_name(value)
+            if host==domain:raise ValueError('Для Hysteria нужен другой поддомен, например hy2.example.com.')
+            return host
+        hy2_domain=ask('Отдельный домен Hysteria (например hy2.example.com, без https:// и пути)',validate=hy2_host)
+        check_dns(hy2_domain,address)
+        def valid_port(value):
+            if not value.isascii() or not value.isdecimal() or not 1024<=int(value)<=65535:
+                raise ValueError('Введи номер UDP-порта от 1024 до 65535 или нажми Enter для 24443.')
+            return int(value)
+        port=ask('UDP-порт Hysteria (число от 1024 до 65535)','24443',valid_port)
+        options.update(hy2_domain=hy2_domain,hy2_port=port)
+    return options
 
 def download(url,path,checksum=None):
     error=None
@@ -350,31 +418,10 @@ def main():
             lock.close()
             run_wizard(args.source.resolve(),args.revision,setup=sys.modules[__name__]);return
         if choice!='1':raise RuntimeError('Неизвестный пункт меню.')
-        domain=ask('Адрес прокси (например tg.example.com)',validate=domain_name)
-        detected=public_ipv4()
-        def valid_ip(value):
-            if not ipaddress.IPv4Address(value).is_global:raise ValueError('Нужен публичный IPv4 этого VPS.')
-            return value
-        address=ask('Публичный IPv4 этого VPS',detected or None,valid_ip)
-        print('Проверяю DNS…');check_dns(domain,address)
-        title=ask('Название страницы','Свои люди')
-        contact=ask('Telegram для кнопки связи (Enter — без кнопки)','')
-        theme=ask('Тема страницы: 1 — тёмная пиксельная, 2 — нейтральная','1')
-        if theme not in ('1','2'):raise RuntimeError('Выбери тему 1 или 2.')
-        options=site_options(title,contact,'pixel' if theme=='1' else 'minimal')
-        email=ask('Email для сертификата (необязательно)','')
-        if email and not re.fullmatch(r'[A-Za-z0-9._+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}',email):raise RuntimeError('Некорректный email.')
-        options.update(domain=domain,ip=address,email=email,phase='preparing')
-        if ask('Установить также Hysteria 2? да / нет','да').lower() in ('да','yes','y'):
-            hy2_domain=ask('Отдельный домен Hysteria (например hy2.example.com)',validate=domain_name)
-            if hy2_domain==domain:raise RuntimeError('Для Hysteria нужен отдельный поддомен.')
-            check_dns(hy2_domain,address)
-            port=int(ask('UDP-порт Hysteria','24443'))
-            if not 1024<=port<=65535:raise RuntimeError('Нужен UDP-порт от 1024 до 65535.')
-            options.update(hy2_domain=hy2_domain,hy2_port=port)
+        options=new_options()
     print('\nПрокси: '+options['domain']+'\nПанель: https://'+options['domain']+'/control/')
     print('Будут установлены MTProxy, релей, Caddy, панель и автозапуск. Настройка займёт несколько минут.')
-    if ask('Начать? да / нет','нет').lower() not in ('да','yes','y'):print('Отменено.');return
+    if ask('Начать? да / нет','нет',yes_no)!='да':print('Отменено.');return
     directory('/etc/relay-panel',mode=0o700);json_write(STATE,options,mode=0o600)
     packages();users()
     with tempfile.TemporaryDirectory(prefix='relay-panel-build-',dir='/var/tmp') as folder:
