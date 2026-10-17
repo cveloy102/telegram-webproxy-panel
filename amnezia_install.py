@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import shutil
+import tarfile
 from units import CURRENT,HARDEN
 
 GO_VERSION='1.25.14'
@@ -12,6 +13,20 @@ ENGINE_SHA256='10bf7458e090bf52f87df27adcd3904a60e4d17fab844d9415e46379147f1ab4'
 TOOLS_VERSION='v3.1.20260812'
 TOOLS_COMMIT='ee0f0a9aa34ff0a0da4b3433b9512781cfe02843'
 TOOLS_SHA256='22438f231d39ea27e4bdc69707ec3103357f3cecc9ad3eecba18a61e5b39c9b9'
+
+
+def extract_tools(setup,archive,work):
+    # Upstream's wg-quick directory contains a convenience symlink to ../wg.
+    # We do not install wg-quick. Omit exactly that link; keep the general
+    # source extractor's rejection of all other links and unsafe paths intact.
+    regular=work/'tools-regular.tar'
+    allowed=f'amneziawg-tools-{TOOLS_COMMIT}/src/wg-quick/awg'
+    with tarfile.open(archive) as source,tarfile.open(regular,'w') as target:
+        for item in source:
+            if item.issym() and item.name==allowed and item.linkname=='../wg':continue
+            if not (item.isdir() or item.isfile()):raise RuntimeError('Неожиданная ссылка в исходниках AmneziaWG Tools')
+            target.addfile(item,source.extractfile(item) if item.isfile() else None)
+    return setup.extract(regular,work/'awg-tools')
 
 
 def ask_options(setup,options):
@@ -81,7 +96,7 @@ def install(setup,options,work):
     print('Собираю официальную AmneziaWG 3.1…')
     for name,repo,commit,checksum in [('engine','amneziawg-go',ENGINE_COMMIT,ENGINE_SHA256),('tools','amneziawg-tools',TOOLS_COMMIT,TOOLS_SHA256)]:
         archive=work/(name+'.tar.gz');setup.download(f'https://codeload.github.com/amnezia-vpn/{repo}/tar.gz/{commit}',archive,checksum)
-        source=setup.extract(archive,work/('awg-'+name))
+        source=extract_tools(setup,archive,work) if name=='tools' else setup.extract(archive,work/('awg-'+name))
         if name=='engine':
             archive=work/'go.tar.gz';setup.download(f'https://go.dev/dl/go{GO_VERSION}.linux-amd64.tar.gz',archive,GO_SHA256)
             toolchain=setup.extract(archive,work/'awg-toolchain')
