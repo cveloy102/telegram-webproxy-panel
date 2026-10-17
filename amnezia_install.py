@@ -90,7 +90,8 @@ def install(setup,options,work):
             setup.run(str(toolchain/'bin/go'),'build','-mod=readonly','-trimpath','-o',str(work/'amneziawg-go'),'.',cwd=source,env=env)
         else:
             setup.run('make','-C',str(source/'src'),'-j2')
-            shutil.copyfile(source/'src/awg',work/'awg')
+            # Upstream builds `wg`; its install target renames it to `awg`.
+            shutil.copyfile(source/'src/wg',work/'awg')
     for name in ('amneziawg-go','awg'):
         target=Path('/usr/local/bin')/name;pending=target.with_suffix('.new')
         shutil.copyfile(work/name,pending);pending.chmod(0o755);pending.replace(target)

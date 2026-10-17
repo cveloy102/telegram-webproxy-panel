@@ -49,7 +49,7 @@ def backup(include_programs=False):
     descriptor=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
     with tempfile.TemporaryDirectory(prefix='relay-backup-') as temp,os.fdopen(descriptor,'wb') as output,tarfile.open(fileobj=output,mode='w:gz') as archive:
         def no_database(item):
-            return None if Path(item.name).name in ('awg.sqlite3','awg.sqlite3-wal','awg.sqlite3-shm','awg.sqlite3-journal') else (None if item.name.endswith(('panel.sqlite3','panel.sqlite3-wal','panel.sqlite3-shm','panel.sqlite3-journal','hy2.sqlite3','hy2.sqlite3-wal','hy2.sqlite3-shm','hy2.sqlite3-journal')) else item)
+            return None if P(item.name).name in ('awg.sqlite3','awg.sqlite3-wal','awg.sqlite3-shm','awg.sqlite3-journal') else (None if item.name.endswith(('panel.sqlite3','panel.sqlite3-wal','panel.sqlite3-shm','panel.sqlite3-journal','hy2.sqlite3','hy2.sqlite3-wal','hy2.sqlite3-shm','hy2.sqlite3-journal')) else item)
         paths=['/var/lib/relay-awg','/etc/systemd/system/relay-awg.service','/etc/systemd/system/amneziawg-server.service','/etc/tmpfiles.d/relay-awg.conf','/etc/sysctl.d/80-relay-awg.conf','/usr/local/bin/awg','/usr/local/bin/amneziawg-go','/etc/hysteria','/var/lib/hysteria','/var/lib/relay-hy2','/var/lib/relay-backup','/srv/relay-site','/etc/systemd/system/relay-backup.service','/etc/systemd/system/relay-hy2.service','/etc/systemd/system/hysteria-server.service','/usr/local/bin/hysteria','/etc/relay-panel','/etc/tproxy-server','/etc/mtproxy','/etc/caddy/Caddyfile','/var/lib/relay-panel','/var/lib/tproxy-accounting','/var/lib/caddy','/usr/local/sbin/relay-panel']
         if include_programs:
             paths+=['/opt/relay-panel','/opt/MTProxy','/usr/local/bin/tproxy-server']
