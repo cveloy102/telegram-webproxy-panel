@@ -76,9 +76,26 @@ def restore_internal(path):
     current=P('/opt/relay-panel/current')
     if current.is_symlink():current.unlink()
     with tarfile.open(path) as archive:
-        for item in archive.getmembers():
+        members=archive.getmembers()
+        for item in members:
             if item.name.startswith('/') or '..' in P(item.name).parts:raise RuntimeError('Небезопасный путь в резервной копии.')
-        archive.extractall('/')
+        binaries={'usr/local/bin/amneziawg-go','usr/local/bin/awg','usr/local/bin/hysteria','usr/local/bin/tproxy-server'}
+        ordinary=[]
+        for item in members:
+            if item.name not in binaries or not item.isfile():
+                ordinary.append(item);continue
+            # A different interface/client may still be using this executable.
+            # Rename gives the restored service a new inode without ETXTBSY.
+            target=P('/')/item.name
+            with tempfile.NamedTemporaryFile(dir=target.parent,prefix=target.name+'.restore-',delete=False) as output:
+                pending=P(output.name)
+                try:
+                    with archive.extractfile(item) as source:shutil.copyfileobj(source,output)
+                    output.flush();os.fsync(output.fileno())
+                    pending.chmod(item.mode & 0o777);os.chown(pending,item.uid,item.gid)
+                    pending.replace(target)
+                finally:pending.unlink(missing_ok=True)
+        archive.extractall('/',members=ordinary)
     subprocess.run(['systemctl','daemon-reload'],check=True)
     subprocess.run(['systemctl','reset-failed','mtproxy','tproxy-server','relay-helper','relay-panel'],check=True)
     sys.path.insert(0,str(P(__file__).parent/'panel'))
