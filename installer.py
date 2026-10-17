@@ -382,4 +382,4 @@ if __name__=='__main__':
     try:main()
     except (RuntimeError,OSError,ValueError) as error:
         print('\nОШИБКА: '+str(error),file=sys.stderr);sys.exit(1)
-    except KeyboardInterrupt:print('\nУстановка прервана. Повторный запуск сохранит созданные ключи.',file=sys.stderr);sys.exit(130)
+    except KeyboardInterrupt:print('\nПрервано. Повтори ту же команду установки: сохранённые ключи и прогресс восстановления останутся на VPS.',file=sys.stderr);sys.exit(130)

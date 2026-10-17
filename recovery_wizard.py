@@ -8,8 +8,6 @@ import os
 from pathlib import Path
 import secrets
 import shutil
-import socket
-import subprocess
 import sys
 import tempfile
 import time
@@ -78,7 +76,14 @@ def domains(data):
 
 def dashboard(data):
     print('\nМастер восстановления — прогресс сохранён на этом VPS')
-    for key,label in STEPS:print(('✓ ' if data.get(key) else '○ ')+label)
+    for key,label in STEPS:print(mark('✓' if data.get(key) else '○',label))
+
+
+def mark(symbol,label):
+    if sys.stdout.isatty() and 'NO_COLOR' not in os.environ:
+        color='32' if symbol=='✓' else '33' if symbol=='⏳' else '90'
+        return '\033['+color+'m'+symbol+'\033[0m '+label
+    return symbol+' '+label
 
 
 def wait_check(label,check,interval=10,sleep=time.sleep):
@@ -87,20 +92,23 @@ def wait_check(label,check,interval=10,sleep=time.sleep):
     while True:
         try:
             check()
-            print('✓ '+label,flush=True)
+            print(mark('✓',label),flush=True)
             return
         except (OSError,RuntimeError,ValueError) as error:
             message=str(error)
             if message!=previous:
-                print('⏳ '+label+': '+message,flush=True);previous=message
+                print(mark('⏳',label+': '+message),flush=True);previous=message
             print('  Проверю снова через '+str(interval)+' с. Ctrl+C — выйти и продолжить позже.',flush=True)
             sleep(interval)
 
 
 def check_https(domain,panel=False):
     # Normal CA and hostname validation, with no insecure fallback.
-    with urllib.request.urlopen('https://'+domain+('/control/' if panel else '/'),timeout=8) as response:
-        if response.status!=200:raise RuntimeError('HTTPS пока не готов. Проверь входящие TCP 80/443 у хостера.')
+    try:
+        with urllib.request.urlopen('https://'+domain+('/control/' if panel else '/'),timeout=8) as response:
+            if response.status!=200:raise RuntimeError('HTTPS пока не готов. Проверь входящие TCP 80/443 у хостера.')
+    except OSError as error:
+        raise RuntimeError('HTTPS или сертификат пока не готовы. Проверь DNS и входящие TCP 80/443 у хостера. '+str(error)) from None
 
 
 def backup_api(payload):
@@ -163,7 +171,9 @@ def enable_services(data,setup,root=ROOT):
         if setup.ask('Старый сервер выключен или его Telegram/Hysteria остановлены? да / нет','нет').lower() not in ('да','yes','y'):
             print('Оставляю новый VPS в режиме ожидания. Повтори команду установки, когда будешь готов.');return False
         # Recheck after human confirmation: DNS may have changed while waiting.
-        for domain in domains(data):setup.check_dns(domain,data['options']['ip'])
+        for domain in domains(data):
+            setup.check_dns(domain,data['options']['ip'])
+            check_https(domain,panel=domain==data['options']['domain'])
         if not state['busy']:backup_api({'op':'migration_resume','confirm':data['options']['domain']})
         deadline=time.monotonic()+180
         while time.monotonic()<deadline:
@@ -192,6 +202,7 @@ def run_wizard(source,revision,*,setup=None,root=ROOT):
         try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError:raise RuntimeError('Другой установщик уже работает.') from None
         data=read_state(root)
+        identity=None
         if data and data.get('complete'):
             dashboard(data);print('Восстановление уже завершено. Панель: https://'+data['options']['domain']+'/control/');return
         existing=json.loads(setup.STATE.read_text()) if setup.STATE.exists() else None
@@ -229,7 +240,7 @@ def run_wizard(source,revision,*,setup=None,root=ROOT):
             save(data,root)
         dashboard(data)
         if not data.get('imported'):
-            if 'identity' not in locals():identity=identity_file(setup)
+            if identity is None:identity=identity_file(setup)
             # Validate the identity again before packages/build or replacement on resume.
             inspect_archive(Path(root)/'archive.tar.gz.age',identity)
             if not data.get('installed'):prepare(source,revision,data,setup,root)

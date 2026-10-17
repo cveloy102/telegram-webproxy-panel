@@ -94,6 +94,15 @@ with tempfile.TemporaryDirectory(prefix='relay-wizard-smoke-') as folder:
         stack.enter_context(patch.object(hysteria_install,'install',side_effect=local_hy2_install))
         stack.enter_context(patch.object(wizard,'check_https',side_effect=https))
         stack.enter_context(patch.object(wizard,'wait_check',side_effect=fast_wait))
+        # A failed import must roll back to standby, never publish bootstrap keys.
+        import restore
+        with patch('builtins.input',side_effect=answers),patch.object(restore,'restore_files',side_effect=RuntimeError('Synthetic interrupted import')):
+            try:wizard.run_wizard(SOURCE,'wizard-smoke',setup=setup)
+            except ValueError:pass
+            else:raise AssertionError('Synthetic import failure was ignored')
+        assert wizard.read_state()['installed'] and not wizard.read_state().get('imported')
+        assert Path('/var/lib/relay-migration/blocked').exists()
+        for name in SERVICES:assert not active(name),name
         with patch('builtins.input',side_effect=answers):
             wizard.run_wizard(SOURCE,'wizard-smoke',setup=setup)
         state=wizard.read_state()
