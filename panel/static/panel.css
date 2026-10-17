@@ -107,3 +107,4 @@ body{margin:0;background:#101113}
 @media(max-width:720px){#fsociety-preview .fc{min-height:100vh}#fsociety-preview .fc-header{padding:20px 16px}}
 
 #fsociety-preview .hy-nav-link{color:inherit;align-self:center;text-decoration:none}
+#fsociety-preview .fc-header{flex-wrap:wrap}

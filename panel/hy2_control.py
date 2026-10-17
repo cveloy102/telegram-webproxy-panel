@@ -237,6 +237,9 @@ class Controller:
         if op=='migration_sample':
             with self.lock:self.collect()
             return {'ok':True}
+        if op=='migration_ready':
+            self.stats_api('online')
+            return {'ok':True}
         with self.lock,mutation() if op!='key' else nullcontext(),self.db() as c:
             s=self.settings(c)
             user=c.execute('SELECT * FROM users WHERE id=?',(p.get('id'),)).fetchone()
@@ -324,7 +327,7 @@ def serve(controller):
                 raw=self.rfile.readline(16385)
                 if len(raw)>16384: raise ValueError('Слишком большой запрос')
                 payload=json.loads(raw)
-                if payload.get('op')=='migration_sample' and peer!=0:raise ValueError('Нужен root')
+                if payload.get('op') in ('migration_sample','migration_ready') and peer!=0:raise ValueError('Нужен root')
                 data=controller.call(payload);result={'ok':True,'data':data}
             except (ValueError,OSError,sqlite3.Error) as e: result={'ok':False,'error':str(e)}
             except Exception:

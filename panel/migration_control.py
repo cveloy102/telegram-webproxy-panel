@@ -186,9 +186,7 @@ class Migration:
             from hy2_routes import helper
             for attempt in range(30):
                 try:
-                    helper({'op':'status'})
-                    from hy2_control import Controller
-                    Controller().stats_api('online')
+                    helper({'op':'migration_ready'})
                     break
                 except (OSError,ValueError):time.sleep(.5)
             else:raise ValueError('Hysteria не стала готова. Проверь DNS и сертификат.')

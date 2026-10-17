@@ -2,6 +2,8 @@
 
 # Telegram WEB Proxy + Relay Panel
 
+The **Перенос** (Migration) page creates a verified final encrypted backup, stops managed Telegram/Hysteria services, keeps the control panel available, and prevents accidental service startup after reboot. Use `relay-panel migration status|stop|resume` over SSH. Recovery supports `--standby` to import data without enabling client traffic or automatic backups. Separately installed Amnezia is not managed. See [migration and rollback instructions (Russian)](docs/backups.md).
+
 [Русский](README.md) · English
 
 Self-hosted Telegram WEB proxy with an interactive installer and a private browser control panel. Designed for a small circle of family and friends.
