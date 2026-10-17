@@ -28,6 +28,7 @@ def fake_public(private):return base64.b64encode(hashlib.sha256(private.encode()
 class AmneziaTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup);self.root=Path(self.temp.name)
+        env=patch.dict(os.environ,{'RELAY_BACKUP_TMP':str(self.root)});env.start();self.addCleanup(env.stop)
         for target,value in [('awg_control.key',fake_key),('awg_control.public_key',fake_public),('migration_state.ROOT',self.root/'migration')]:
             p=patch(target,value);p.start();self.addCleanup(p.stop)
         p=patch('backup_notify.changed');p.start();self.addCleanup(p.stop)

@@ -85,6 +85,7 @@ def install(setup,options,work):
             archive=work/'go.tar.gz';setup.download(f'https://go.dev/dl/go{GO_VERSION}.linux-amd64.tar.gz',archive,GO_SHA256)
             toolchain=setup.extract(archive,work/'awg-toolchain')
             env={**os.environ,'GOTOOLCHAIN':'local','GOSUMDB':'sum.golang.org','GOPROXY':'https://proxy.golang.org',
+                 'GOROOT':str(toolchain),'GOENV':'off','GOOS':'linux','GOARCH':'amd64','CGO_ENABLED':'0',
                  'GOCACHE':str(work/'go-cache'),'GOPATH':str(work/'go-path')}
             setup.run(str(toolchain/'bin/go'),'build','-mod=readonly','-trimpath','-o',str(work/'amneziawg-go'),'.',cwd=source,env=env)
         else:
