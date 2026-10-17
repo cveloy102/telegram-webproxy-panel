@@ -10,6 +10,9 @@ from hy2_control import Controller, TZ
 class HysteriaTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.base=Path(self.temp.name)
+        import migration_state
+        migration=patch.object(migration_state,'ROOT',self.base/'migration')
+        migration.start();self.addCleanup(migration.stop)
         config=self.base/'config.yaml';config.write_text(yaml.safe_dump({'listen':'0.0.0.0:24443','acme':{'domains':['hy2.example.com']},'auth':{'password':'original-secret'}}))
         self.c=Controller(self.base/'data',config,test=True)
     def tearDown(self): self.temp.cleanup()

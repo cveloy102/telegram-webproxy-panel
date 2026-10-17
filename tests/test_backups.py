@@ -18,6 +18,9 @@ from backup_control import Controller,folder_id
 class Backups(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup);self.root=Path(self.temp.name)
+        import migration_state
+        migration=patch.object(migration_state,'ROOT',self.root/'migration')
+        migration.start();self.addCleanup(migration.stop)
         env=patch.dict(os.environ,{'RELAY_BACKUP_TMP':str(self.root)});env.start();self.addCleanup(env.stop)
         self.paths={k:self.root/k for k in ('users','owner','hy2','usage','site','hy2config','hy2cover')}
         for k in ('owner','hy2','site','hy2cover'):self.paths[k].mkdir()

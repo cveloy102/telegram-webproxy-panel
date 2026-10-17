@@ -40,6 +40,10 @@ class PanelTests(unittest.TestCase):
             self.assertEqual(self.post('logout').status_code,302)
 
     def setUp(self):
+        from unittest.mock import patch
+        import migration_state
+        migration = patch.object(migration_state, 'ROOT', root / 'migration')
+        migration.start();self.addCleanup(migration.stop)
         self.client=panel.app.test_client()
         with panel.db() as conn:
             for table in ('owner','recovery','events','monitor','failures'):

@@ -132,13 +132,35 @@ def inspect_archive(archive,identity):
         return manifest,counts
 
 
-def identity_file(setup):
+def choose_file(setup,prompt,patterns,limit,*,folder=Path('/root')):
+    """Offer local filenames without exposing archive or identity contents."""
+    candidates=sorted({path for pattern in patterns for path in folder.glob(pattern) if path.is_file()})
+    if candidates:
+        print('\nНайдены файлы на новом VPS:')
+        for number,path in enumerate(candidates,1):print('  '+str(number)+' — '+str(path))
+        print('Введи номер файла или полный путь. Enter выбирает файл в квадратных скобках.')
+    else:
+        print('\nФайлы в '+str(folder)+' пока не найдены. Загрузи их через WinSCP/SFTP и введи полный путь.')
     def valid(value):
-        path=Path(value).expanduser()
-        if not path.is_file():raise ValueError('Файл не найден. Передай relay-recovery-key.txt на этот VPS через SFTP/SCP.')
-        if path.stat().st_size>16384:raise ValueError('Это не небольшой файл ключа age.')
+        value=value.strip()
+        if value.isdecimal():
+            number=int(value)
+            if not 1<=number<=len(candidates):raise ValueError('Нет такого номера. Выбери номер из списка или введи полный путь к файлу.')
+            path=candidates[number-1]
+        else:
+            if len(value)>=2 and value[0]==value[-1] and value[0] in ('"',"'"):value=value[1:-1]
+            path=Path(value).expanduser()
+        if not path.is_file():raise ValueError('Файл не найден на новом VPS. Проверь папку и настоящее имя, включая расширение .txt у ключа, которое Windows может скрывать.')
+        if not 0<path.stat().st_size<=limit:raise ValueError('Файл пуст или слишком большой для этого шага.')
         return path
-    return setup.ask('Путь к сохранённому relay-recovery-key.txt (это не SSH-ключ)',validate=valid)
+    default=str(candidates[0]) if len(candidates)==1 else None
+    return setup.ask(prompt,default,validate=valid)
+
+
+def identity_file(setup):
+    print('\nНужен сохранённый приватный ключ age: relay-recovery-key.txt (или relay-recovery-key без расширения). Это не SSH-ключ; содержимое в чат не отправляй.')
+    return choose_file(setup,'Путь к сохранённому relay-recovery-key.txt или номер файла',
+                       ('relay-recovery-key.txt','relay-recovery-key'),16384)
 
 
 def prepare(source,revision,data,setup,root=ROOT):
@@ -151,6 +173,7 @@ def prepare(source,revision,data,setup,root=ROOT):
     migration_root.mkdir(parents=True,exist_ok=True)
     (migration_root/'blocked').touch(mode=0o640)
     setup.json_write(migration_root/'state.json',{'phase':'standby','error':'','step':'Мастер восстанавливает данные','previous':{}},mode=0o640)
+    print('\nСейчас устанавливаю компоненты. DNS пока менять не нужно — мастер отдельно покажет записи после восстановления данных.')
     setup.packages();setup.users()
     setup.directory(migration_root,'root','relayadmin',0o750)
     setup.json_write(migration_root/'state.json',{'phase':'standby','error':'','step':'Мастер восстанавливает данные','previous':{}},mode=0o640,group='relayadmin')
@@ -214,9 +237,11 @@ def run_wizard(source,revision,*,setup=None,root=ROOT):
             if digest(Path(root)/'archive.tar.gz.age')!=data['sha256']:raise RuntimeError('Сохранённый архив изменился. Восстановление остановлено.')
         else:
             print('\nПОДГОТОВЬ КОПИЮ\nЕсли старая панель доступна: «Перенос» → «Остановить и создать финальную копию». Дождись подтверждения Google Диска.')
-            print('Если старый VPS потерян — скачай последнюю успешную .tar.gz.age с Диска.\nПередай архив и сохранённый relay-recovery-key.txt на новый VPS через SFTP/SCP. Ключ в чат присылать не нужно.')
-            archive=Path(setup.ask('Путь к архиву .tar.gz.age')).expanduser()
-            if not archive.is_file() or not 0<archive.stat().st_size<=600*1024*1024:raise ValueError('Нужен существующий зашифрованный архив до 600 МБ.')
+            print('Если старый VPS потерян — скачай последнюю успешную .tar.gz.age с Диска.')
+            print('\nЗАГРУЗИ ДВА ФАЙЛА В /root/ НОВОГО VPS\n1. Архив .tar.gz.age с Google Диска. Распаковывать его не нужно.\n2. Сохранённый relay-recovery-key.txt. Без него архив не восстановить.')
+            print('В WinSCP выбери SFTP, IP нового VPS, порт SSH (обычно 22), пользователя root и пароль или SSH-ключ.\nСправа открой /root/ и перетащи туда оба файла с компьютера. Консоль установщика закрывать не нужно.')
+            print('Здесь указывается путь на новом VPS, например /root/relay-backup.tar.gz.age, а не путь на компьютере.\nПорядок: файлы → восстановление → смена DNS → проверка HTTPS → включение подключений. DNS пока не меняй.')
+            archive=choose_file(setup,'Путь к архиву .tar.gz.age или номер файла',('*.tar.gz.age',),600*1024*1024)
             identity=identity_file(setup)
             if not shutil.which('age'):
                 setup.run('apt-get','update');setup.run('apt-get','install','-y','--no-install-recommends','age')
@@ -225,6 +250,7 @@ def run_wizard(source,revision,*,setup=None,root=ROOT):
             def address(value):
                 if not ipaddress.IPv4Address(value).is_global:raise ValueError('Нужен публичный IPv4 нового VPS.')
                 return value
+            print('\nНужен IP нового VPS из кабинета хостинга. Адрес в квадратных скобках определён автоматически.\nЕсли он правильный — просто нажми Enter. Если другой — введи правильный IPv4 и нажми Enter.\nНе указывай IP старого сервера или домашнего интернета.')
             ip=setup.ask('Публичный IPv4 НОВОГО VPS',setup.public_ipv4() or None,address)
             options=options_from_manifest(manifest,ip)
             created=dt.datetime.fromtimestamp(manifest['created'],dt.timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
@@ -247,9 +273,10 @@ def run_wizard(source,revision,*,setup=None,root=ROOT):
             from restore import restore_main
             restore_main([str(Path(root)/'archive.tar.gz.age'),'--identity',str(identity),'--standby'],confirmed=True)
             data['imported']=True;save(data,root);dashboard(data)
-        print('\nDNS: в панели управления доменом замени IP в A-записях на '+data['options']['ip']+'. Имена доменов оставь прежними. Убери устаревшие AAAA; в Cloudflare выбери DNS only.')
+        print('\nТЕПЕРЬ ПЕРЕКЛЮЧИ DNS\nВ панели управления доменом замени старый IP в A-записях на '+data['options']['ip']+'. Имена доменов оставь прежними. Удали AAAA у этих имён; эта версия использует IPv4. В Cloudflare выбери DNS only (серое облако).')
         for domain in domains(data):print('  A  '+domain+' → '+data['options']['ip'])
         print('Открой у хостера входящие TCP 80/443'+(' и UDP '+str(data['options']['hy2_port']) if data['options'].get('hy2_domain') else '')+'.')
+        print('Мастер дождётся обновления DNS и проверит HTTPS. Начинать установку заново не нужно.\nЕсли DNS уже переключён, проверка пройдёт автоматически. Кэши у клиентов могут обновиться позже.')
         # Never trust an old green checkpoint for an external, changeable condition.
         data['dns']=False;data['https']=False;save(data,root)
         for domain in domains(data):

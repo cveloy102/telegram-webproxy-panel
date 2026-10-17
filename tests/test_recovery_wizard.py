@@ -13,6 +13,50 @@ import recovery_wizard as wizard
 
 
 class RecoveryWizardTests(unittest.TestCase):
+    def test_file_selection_by_number_never_defaults_between_multiple_archives(self):
+        import installer
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)
+            for name in ('a.tar.gz.age','b.tar.gz.age'):(root/name).write_bytes(b'encrypted')
+            with patch('builtins.input',side_effect=['9','2']),contextlib.redirect_stdout(io.StringIO()) as output:
+                selected=wizard.choose_file(installer,'Архив',('*.tar.gz.age',),1024,folder=root)
+            self.assertEqual(selected,root/'b.tar.gz.age')
+            self.assertIn('Нет такого номера',output.getvalue())
+
+    def test_single_key_accepts_enter_and_supports_hidden_extension(self):
+        import installer
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)
+            for name in ('relay-recovery-key','relay-recovery-key.txt'):
+                key=root/name;key.write_text('private-test-content')
+                with patch('builtins.input',return_value=''),contextlib.redirect_stdout(io.StringIO()) as output:
+                    selected=wizard.choose_file(installer,'Ключ',('relay-recovery-key','relay-recovery-key.txt'),16384,folder=root)
+                self.assertEqual(selected,key)
+                self.assertNotIn('private-test-content',output.getvalue())
+                key.unlink()
+
+    def test_manual_path_can_be_uploaded_while_prompt_is_open(self):
+        import installer
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);archive=root/'uploaded archive.tar.gz.age'
+            def upload(prompt):
+                archive.write_bytes(b'encrypted')
+                return '"'+str(archive)+'"'
+            with patch('builtins.input',side_effect=upload),contextlib.redirect_stdout(io.StringIO()):
+                selected=wizard.choose_file(installer,'Архив',('*.tar.gz.age',),1024,folder=root)
+            self.assertEqual(selected,archive)
+
+    def test_invalid_file_retries_instead_of_aborting_recovery(self):
+        import installer
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);empty=root/'empty';empty.touch()
+            large=root/'large';large.write_bytes(b'too large')
+            good=root/'good';good.write_bytes(b'ok')
+            answers=[str(root/'missing'),str(empty),str(large),str(good)]
+            with patch('builtins.input',side_effect=answers),contextlib.redirect_stdout(io.StringIO()):
+                selected=wizard.choose_file(installer,'Файл',('*.age',),3,folder=root)
+            self.assertEqual(selected,good)
+
     def test_manifest_supplies_domains_and_original_port(self):
         manifest={'telegram_domain':'TG.example.com','hysteria':True,'hysteria_domain':'hy2.example.com','hysteria_port':24443,'redirects':[{'host':'example.com','code':'302'}]}
         options=wizard.options_from_manifest(manifest,'1.1.1.1')

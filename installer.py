@@ -24,7 +24,7 @@ import urllib.request
 
 from units import units, caddyfile, FIREWALL
 
-VERSION='0.4.0-beta.1'
+VERSION='0.4.0-beta.2'
 RELAY_COMMIT='c8adb8b7c6b7fc46c12ae3acb68be9070c26a8e8'
 RELAY_SHA256='a78b48f536180143dd7005785ca397310c36ee0b132e19949a45d64f586ab549'
 MTPROXY_COMMIT='f36d8af769ffaeac36978d38c2c0f6d1104c2137'
