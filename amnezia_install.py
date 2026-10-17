@@ -81,7 +81,7 @@ RestartSec=5
 RuntimeDirectory=relay-awg-control
 RuntimeDirectoryMode=0750
 UMask=0077
-{harden}ReadWritePaths=/var/lib/relay-awg /run/relay-awg /run/relay-awg-control /run/amneziawg
+{harden}ReadWritePaths=/var/lib/relay-awg /run/relay-awg-control /run/amneziawg
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_CHOWN
 MemoryMax=128M
 [Install]

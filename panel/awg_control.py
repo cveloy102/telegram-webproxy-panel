@@ -112,7 +112,7 @@ class Controller:
     def apply(self,c):
         if self.test:return
         # syncconf preserves sessions/counters of unchanged peers. No keys in argv or logs.
-        with tempfile.NamedTemporaryFile(mode='w',dir='/run/relay-awg',prefix='peers-',delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode='w',dir='/run/amneziawg',prefix='peers-',delete=False) as f:
             path=Path(f.name)
             try:
                 path.chmod(0o600);f.write(self.render(c));f.flush()
