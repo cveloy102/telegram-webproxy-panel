@@ -18,3 +18,5 @@ This repository contains its own installer, control panel, and optional relay ac
 Service definitions in `units.py` are project-specific. The accounting patch is maintained against one upstream commit; upstream updates require a reviewed patch and new checksums, not an unreviewed download of the latest branch.
 
 Telegram is a trademark of its respective owner. This independent project does not imply affiliation or endorsement.
+
+AmneziaWG 3.1 uses the official [amneziawg-go](https://github.com/amnezia-vpn/amneziawg-go) (MIT) and [amneziawg-tools](https://github.com/amnezia-vpn/amneziawg-tools) (GPL-2.0). Both source archives and the Go toolchain are pinned by SHA-256 in `amnezia_install.py`. Their licenses remain available in the upstream source trees; project code does not incorporate these implementations.

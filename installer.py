@@ -24,7 +24,7 @@ import urllib.request
 
 from units import units, caddyfile, FIREWALL
 
-VERSION='0.4.0-beta.4'
+VERSION='0.5.0-beta.1'
 RELAY_COMMIT='c8adb8b7c6b7fc46c12ae3acb68be9070c26a8e8'
 RELAY_SHA256='a78b48f536180143dd7005785ca397310c36ee0b132e19949a45d64f586ab549'
 MTPROXY_COMMIT='f36d8af769ffaeac36978d38c2c0f6d1104c2137'
@@ -160,6 +160,8 @@ def new_options():
             return int(value)
         port=ask('UDP-порт Hysteria (число от 1024 до 65535)','24443',valid_port)
         options.update(hy2_domain=hy2_domain,hy2_port=port)
+    from amnezia_install import ask_options
+    ask_options(sys.modules[__name__],options)
     return options
 
 def download(url,path,checksum=None):
@@ -344,6 +346,8 @@ def install_files(source,options,work,candidate,mtproxy):
     from hysteria_install import install as install_hysteria,caddy as hy2_caddy
     install_backup(sys.modules[__name__])
     install_hysteria(sys.modules[__name__],options,work)
+    from amnezia_install import install as install_amnezia
+    install_amnezia(sys.modules[__name__],options,work)
     write('/etc/caddy/Caddyfile',caddyfile(options['domain'],options['email'])+(hy2_caddy(options['hy2_domain']) if options.get('hy2_domain') else ''))
     run('caddy','validate','--config','/etc/caddy/Caddyfile','--adapter','caddyfile')
     run('/usr/local/bin/tproxy-server','-config','/etc/tproxy-server/config.json','-profiles-file','/etc/tproxy-server/profiles.json','-check')
@@ -361,6 +365,8 @@ def activate(standby=False):
     run('systemctl','enable','--now','relay-backup')
     from hysteria_install import activate as activate_hysteria
     activate_hysteria(sys.modules[__name__],json.loads(STATE.read_text()),standby=standby)
+    from amnezia_install import activate as activate_amnezia
+    activate_amnezia(sys.modules[__name__],json.loads(STATE.read_text()),standby=standby)
 
 def health(domain,public=True):
     for _ in range(25):
@@ -413,6 +419,9 @@ def main():
             health(existing['domain']);existing['phase']='complete';json_write(STATE,existing,mode=0o600);show_access();return
         if choice!='3':raise RuntimeError('Неизвестный пункт меню.')
         options=existing
+        if not options.get('awg_domain'):
+            from amnezia_install import ask_options
+            ask_options(sys.modules[__name__],options)
     else:
         choice=ask('1 — новая установка, 2 — восстановить из резервной копии, 0 — выход','1')
         if choice=='0':return

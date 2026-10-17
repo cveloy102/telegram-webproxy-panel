@@ -86,6 +86,8 @@ def authorized():
 
 from hy2_routes import register as register_hysteria
 register_hysteria(app,authorized,csrf)
+from awg_routes import register as register_amnezia
+register_amnezia(app,authorized,csrf)
 
 from backup_routes import register as register_backups
 register_backups(app,authorized,csrf)
@@ -397,7 +399,7 @@ def api_ack():
 
 @app.get(PREFIX+'/static/<path:name>')
 def assets(name):
-    if name not in ('panel.css','panel.js','hysteria.css','hysteria.js','backups.js','backups.css','migration.js'):
+    if name not in ('panel.css','panel.js','hysteria.css','hysteria.js','amnezia.js','backups.js','backups.css','migration.js'):
         abort(404)
     return app.send_static_file(name)
 

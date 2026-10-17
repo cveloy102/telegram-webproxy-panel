@@ -1,3 +1,7 @@
+# AmneziaWG 3.1 support
+
+Optional AmneziaWG 3.1 installation, per-user QR and `.conf` export, traffic accounting, quotas and expiry. Encrypted backups preserve server and peer keys so existing configs work after recovery to a new IP with the same domain and UDP port. See [AmneziaWG operations and recovery](docs/AMNEZIA.md) (Russian).
+
 **New:** optional Hysteria 2 with individual users, traffic accounting, and age-encrypted Google Drive backups for both panels. Manual, change-triggered and daily snapshots are supported. Keep the downloaded recovery key separately. See [backup and migration instructions (Russian)](docs/backups.md). The installer asks for a separate Hysteria domain and UDP port (default 24443); both domains must resolve to the server.
 
 # Telegram WEB Proxy + Relay Panel
