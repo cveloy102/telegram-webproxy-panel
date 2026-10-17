@@ -39,6 +39,8 @@ def firewall():
 def main():
     from migration_state import can_start
     if not can_start():raise RuntimeError('Сервер остановлен для переноса')
+    existing=subprocess.run(['ip','link','show','dev',INTERFACE],capture_output=True)
+    if existing.returncode==0:raise RuntimeError('Интерфейс '+INTERFACE+' уже занят; существующая сеть не изменена')
     Path('/run/amneziawg').mkdir(mode=0o700,exist_ok=True)
     routes=json.loads(run('ip','-j','-4','route','show','table','all').stdout)
     network=ipaddress.ip_network('10.77.0.0/24')

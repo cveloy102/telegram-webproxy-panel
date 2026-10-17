@@ -76,6 +76,7 @@ WantedBy=multi-user.target
 
 def install(setup,options,work):
     if not options.get('awg_domain'):return
+    if not Path('/dev/net/tun').exists():raise RuntimeError('Для AmneziaWG нужен доступный /dev/net/tun. Проверь поддержку TUN у хостера.')
     if options.get('hy2_port')==options['awg_port']:raise ValueError('AmneziaWG и Hysteria нужны разные UDP-порты')
     print('Собираю официальную AmneziaWG 3.1…')
     for name,repo,commit,checksum in [('engine','amneziawg-go',ENGINE_COMMIT,ENGINE_SHA256),('tools','amneziawg-tools',TOOLS_COMMIT,TOOLS_SHA256)]:
