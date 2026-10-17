@@ -18,7 +18,7 @@
 #fsociety-preview .fc-main{padding:24px 26px}
 #fsociety-preview .fc-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:22px}
 #fsociety-preview .fc-heading h2{font:500 27px/1.2 ui-monospace,Consolas,monospace;margin:4px 0}
-#fsociety-preview .fc-button{background:var(--fc-panel);border:1px solid var(--fc-line);padding:9px 13px;min-height:40px;white-space:nowrap}
+#fsociety-preview .fc-button{background:var(--fc-panel);color:inherit;text-decoration:none;border:1px solid var(--fc-line);padding:9px 13px;min-height:40px;white-space:nowrap}
 #fsociety-preview .fc-primary{color:var(--fc-bg)!important;background:var(--fc-red);border-color:var(--fc-red);font-weight:500!important;box-shadow:3px 3px 0 var(--fc-line)}
 #fsociety-preview .fc-button:hover{filter:brightness(1.15)}
 #fsociety-preview .fc-stats{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--fc-line);border-bottom:1px solid var(--fc-line);margin:0 0 22px}
