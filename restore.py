@@ -45,10 +45,12 @@ def restore_files(files,paths):
                 p.chmod(0o755 if p.is_dir() else 0o644)
                 if name.startswith('hysteria'):shutil.chown(p,'hysteria','hysteria')
 
-def main(argv=None):
+def restore_main(argv=None):
     if os.geteuid()!=0:raise ValueError('Восстановление запускается от root.')
     parser=argparse.ArgumentParser(description='Восстановить зашифрованную копию Relay Panel')
-    parser.add_argument('archive',type=Path);parser.add_argument('--identity',type=Path,required=True);parser.add_argument('--inspect',action='store_true');args=parser.parse_args(argv)
+    parser.add_argument('archive',type=Path);parser.add_argument('--identity',type=Path,required=True);parser.add_argument('--inspect',action='store_true')
+    parser.add_argument('--standby',action='store_true',help='Восстановить данные без запуска клиентских подключений и автокопий')
+    args=parser.parse_args(argv)
     sys.path.insert(0,str(Path(__file__).parent/'panel'))
     from backup_archive import decrypt,layout
     from installer import domain_name
@@ -68,7 +70,13 @@ def main(argv=None):
         services=['relay-backup','relay-panel','relay-helper','relay-hy2','hysteria-server','tproxy-server','mtproxy']
         subprocess.run(['systemctl','stop',*services],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         before=manage.backup(include_programs=True);print('Копия состояния до восстановления:',before)
+        from backup_control import Controller as Backup
+        from migration_control import Migration
+        migration=Migration(Backup())
         try:
+            migration.standby()
+            for name in ('relay-refresh.timer','relay-refresh.service'):
+                subprocess.run(['systemctl','stop',name],check=True,capture_output=True)
             paths=layout();restore_files(temp/'files',paths)
             if redirects:
                 pending=caddy.with_suffix('.restore');pending.write_text(restored_caddy);pending.chmod(0o644)
@@ -77,14 +85,14 @@ def main(argv=None):
                     pending.replace(caddy);subprocess.run(['systemctl','reload','caddy'],check=True)
                 finally:pending.unlink(missing_ok=True)
             from helper import Controller
-            controller=Controller();controller.apply(controller.read())
+            controller=Controller();controller.apply(controller.read(),start=False)
             if hy2:
                 from hy2_control import Controller as Hysteria
                 controller=Hysteria()
                 with controller.db() as c:
                     c.execute('DELETE FROM samples');c.execute("UPDATE settings SET v=? WHERE k='epoch'",(json.dumps(''),))
                     settings=controller.settings(c)
-                controller.apply_settings(settings)
+                controller.apply_settings(settings,start=False)
                 current['hy2_port']=settings['port']
                 Path('/etc/relay-panel/install.json').write_text(json.dumps(current))
             backup_source=temp/'files/backup';target=Path('/var/lib/relay-backup')
@@ -94,23 +102,38 @@ def main(argv=None):
                 if source.exists():shutil.copyfile(source,target/name);(target/name).chmod(0o600)
             # State is fresh: force an off-site snapshot of the restored data after restart.
             (target/'state.json').unlink(missing_ok=True)
+            if not args.standby:
+                migration.data.update(phase='running',error='',step='Восстановление завершено')
+                migration.data.pop('previous',None);migration.save()
+                (migration.root/'blocked').unlink(missing_ok=True)
+                subprocess.run(['systemctl','restart','mtproxy','tproxy-server','relay-refresh.timer'],check=True)
             subprocess.run(['systemctl','restart','relay-helper','relay-panel','relay-backup'],check=True)
-            if hy2:subprocess.run(['systemctl','restart','relay-hy2','hysteria-server'],check=True)
+            if hy2 and not args.standby:subprocess.run(['systemctl','restart','relay-hy2','hysteria-server'],check=True)
             from installer import health
-            health(current['domain'],public=False)
+            if not args.standby:health(current['domain'],public=False)
             from backup_routes import helper as backup_ready
             from hy2_routes import helper as hy2_ready
             for attempt in range(30):
                 try:
                     backup_ready({'op':'status'})
-                    if hy2:hy2_ready({'op':'status'});controller.stats_api('online')
+                    if hy2 and not args.standby:hy2_ready({'op':'status'});controller.stats_api('online')
                     break
                 except (OSError,ValueError):time.sleep(1)
             else:raise ValueError('Службы управления не стали готовы после восстановления.')
-            print('Готово. Используй прежние пароль, 2FA и ключи. Проверь DNS обоих доменов и доступность UDP-порта',current.get('hy2_port','—'))
+            if args.standby:print('Данные восстановлены в режиме ожидания. Проверь DNS, сертификаты и порты. Для включения: relay-panel migration resume')
+            else:print('Готово. Используй прежние пароль, 2FA и ключи. Проверь DNS обоих доменов и доступность UDP-порта',current.get('hy2_port','—'))
         except Exception:
+            migration.data.update(phase='running',error='',step='Восстановление отменено')
+            migration.data.pop('previous',None);migration.save();(migration.root/'blocked').unlink(missing_ok=True)
             manage.restore_internal(before)
             raise ValueError('Восстановление не завершено. Предыдущее состояние возвращено; проверь службы через relay-panel status.') from None
+
+def main(argv=None):
+    sys.path.insert(0,str(Path(__file__).parent/'panel'))
+    if '--inspect' in (argv if argv is not None else sys.argv[1:]):return restore_main(argv)
+    from migration_state import exclusive
+    with exclusive():return restore_main(argv)
+
 
 if __name__=='__main__':
     try:main()

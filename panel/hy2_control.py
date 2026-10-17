@@ -19,6 +19,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import quote, urlsplit
 import urllib.request
 import yaml
+from migration_state import mutation, blocked
+from contextlib import nullcontext
 
 TZ = dt.timezone.utc
 LOG = logging.getLogger('hy2-controller')
@@ -191,7 +193,8 @@ class Controller:
         return {'users':users,'events':events,'settings':{k:s[k] for k in ('host','port','cover','cover_url','obfs')},
                 'paused':s['paused'],'started':s['started'],'updated':self.updated,'telemetry_ok':fresh,'metrics':metrics}
 
-    def apply_settings(self,s):
+    def apply_settings(self,s,start=True):
+        if start and blocked():raise ValueError('Сервер остановлен для переноса.')
         if self.test: return
         cfg=yaml.safe_load(self.config.read_text());before=self.config.read_bytes()
         cfg['listen']='0.0.0.0:'+str(s['port'])
@@ -206,6 +209,7 @@ class Controller:
             atomic(self.config,content,0o640);os.chown(self.config,0,grp.getgrnam('hysteria').gr_gid)
         try:
             install(yaml.safe_dump(cfg,allow_unicode=True,sort_keys=False))
+            if not start:return
             subprocess.run(['systemctl','restart','hysteria-server'],check=True,capture_output=True,timeout=30)
             for _ in range(15):
                 try:
@@ -214,7 +218,8 @@ class Controller:
                 except OSError: time.sleep(.4)
             raise RuntimeError('Hysteria не запустилась с новыми настройками')
         except Exception:
-            install(before.decode());subprocess.run(['systemctl','restart','hysteria-server'],capture_output=True,timeout=30)
+            install(before.decode())
+            if start:subprocess.run(['systemctl','restart','hysteria-server'],capture_output=True,timeout=30)
             raise ValueError('Настройки не применены; прежняя конфигурация восстановлена') from None
 
     @staticmethod
@@ -229,7 +234,10 @@ class Controller:
     def call(self,p):
         op=p.get('op')
         if op=='status': return self.public()
-        with self.lock,self.db() as c:
+        if op=='migration_sample':
+            with self.lock:self.collect()
+            return {'ok':True}
+        with self.lock,mutation() if op!='key' else nullcontext(),self.db() as c:
             s=self.settings(c)
             user=c.execute('SELECT * FROM users WHERE id=?',(p.get('id'),)).fetchone()
             if op=='key':
@@ -315,7 +323,9 @@ def serve(controller):
             try:
                 raw=self.rfile.readline(16385)
                 if len(raw)>16384: raise ValueError('Слишком большой запрос')
-                data=controller.call(json.loads(raw));result={'ok':True,'data':data}
+                payload=json.loads(raw)
+                if payload.get('op')=='migration_sample' and peer!=0:raise ValueError('Нужен root')
+                data=controller.call(payload);result={'ok':True,'data':data}
             except (ValueError,OSError,sqlite3.Error) as e: result={'ok':False,'error':str(e)}
             except Exception:
                 LOG.exception('Controller request failed');result={'ok':False,'error':'Служба управления временно недоступна'}
@@ -343,7 +353,8 @@ def serve(controller):
     threading.Thread(target=server.serve_forever,daemon=True).start()
     threading.Thread(target=AuthServer(('127.0.0.1',8083),AuthHandler).serve_forever,daemon=True).start()
     while True:
-        try: controller.collect()
+        try:
+            with controller.lock:controller.collect()
         except Exception: LOG.exception('Accounting sample failed')
         time.sleep(5)
 

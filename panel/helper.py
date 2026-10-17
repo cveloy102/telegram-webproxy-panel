@@ -1,5 +1,6 @@
 """Small privileged controller; the HTTP app runs as a separate unprivileged user."""
 import copy
+from contextlib import nullcontext
 import json
 import os
 import pathlib
@@ -12,6 +13,7 @@ import subprocess
 import threading
 import time
 import urllib.request
+from migration_state import mutation, blocked
 
 BASE = pathlib.Path(os.getenv('RELAY_ROOT', '/etc/relay-panel'))
 
@@ -44,7 +46,8 @@ class Controller:
             user['suffix'] = user.pop('secret')[-4:]
         return state
 
-    def apply(self, state):
+    def apply(self, state, start=True):
+        if start and blocked():raise ValueError('Сервер остановлен для переноса.')
         if self.apply_override:
             return self.apply_override(state)
         active = [u for u in state['users'] if u['enabled'] and not state['paused']]
@@ -62,6 +65,7 @@ class Controller:
             atomic(paths[1], {'secrets': [p['secret'] for p in profiles]}, 0o640, 'mtproxy')
             subprocess.run(['/usr/local/bin/tproxy-server', '-config', '/etc/tproxy-server/config.json',
                             '-profiles-file', str(paths[0]), '-check'], check=True, capture_output=True, timeout=15)
+            if not start:return
             subprocess.run(['systemctl', 'reset-failed', 'mtproxy', 'tproxy-server'], check=True, capture_output=True, timeout=15)
             subprocess.run(['systemctl', 'restart', 'mtproxy', 'tproxy-server'], check=True, capture_output=True, timeout=60)
             for _ in range(30):
@@ -77,12 +81,13 @@ class Controller:
             for path, data in zip(paths, before):
                 if data is not None:
                     path.write_bytes(data)
-            subprocess.run(['systemctl', 'reset-failed', 'mtproxy', 'tproxy-server'], capture_output=True, timeout=15)
-            subprocess.run(['systemctl', 'restart', 'mtproxy', 'tproxy-server'], capture_output=True, timeout=60)
+            if start:
+                subprocess.run(['systemctl', 'reset-failed', 'mtproxy', 'tproxy-server'], capture_output=True, timeout=15)
+                subprocess.run(['systemctl', 'restart', 'mtproxy', 'tproxy-server'], capture_output=True, timeout=60)
             raise RuntimeError('Change rolled back; previous keys restored') from None
 
     def call(self, request):
-        with self.lock:
+        with self.lock, mutation() if request.get('op') not in ('status','key') else nullcontext():
             state = self.read()
             previous = copy.deepcopy(state)
             op = request.get('op')

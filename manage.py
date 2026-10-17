@@ -81,13 +81,23 @@ def restore_internal(path):
         archive.extractall('/')
     subprocess.run(['systemctl','daemon-reload'],check=True)
     subprocess.run(['systemctl','reset-failed','mtproxy','tproxy-server','relay-helper','relay-panel'],check=True)
-    subprocess.run(['systemctl','restart','mtproxy','tproxy-server','relay-helper','relay-panel','caddy','relay-refresh.timer'],check=True)
-    optional=[name for name in ('relay-backup','relay-hy2','hysteria-server') if P('/etc/systemd/system/'+name+'.service').exists()]
+    sys.path.insert(0,str(P(__file__).parent/'panel'))
+    from migration_state import blocked
+    names=['relay-helper','relay-panel','caddy']
+    if not blocked():names+=['mtproxy','tproxy-server','relay-refresh.timer']
+    subprocess.run(['systemctl','restart',*names],check=True)
+    optional=[name for name in (('relay-backup',) if blocked() else ('relay-backup','relay-hy2','hysteria-server')) if P('/etc/systemd/system/'+name+'.service').exists()]
     if optional:
         subprocess.run(['systemctl','reset-failed',*optional],check=True)
         subprocess.run(['systemctl','restart',*optional],check=True)
 
 def refresh():
+    sys.path.insert(0,str(P(__file__).parent/'panel'))
+    from migration_state import mutation
+    with mutation():return refresh_active()
+
+
+def refresh_active():
     # Download once and replace only after format checks; preserve the last good config on failure.
     path=P('/etc/mtproxy/proxy-multi.conf');temp=path.with_name('proxy-multi.conf.new')
     try:
@@ -101,6 +111,14 @@ def refresh():
 def main():
     if os.geteuid()!=0:raise RuntimeError('Нужен root: sudo relay-panel '+(' '.join(sys.argv[1:])))
     command=sys.argv[1] if len(sys.argv)>1 else 'status'
+    sys.path.insert(0,str(P(__file__).parent/'panel'))
+    if command=='migration':
+        from backup_routes import helper
+        action=sys.argv[2] if len(sys.argv)>2 else 'status'
+        if action not in ('status','stop','resume'):raise ValueError('Команды: migration status, migration stop, migration resume')
+        payload={'op':'migration_'+action}
+        if action!='status':payload['confirm']=input('Введи домен этого сервера для подтверждения '+action+': ').strip()
+        print(json.dumps(helper(payload),ensure_ascii=False,indent=2));return
     if command=='status':
         state=json.loads((ROOT/'install.json').read_text())
         print('Relay Panel '+state.get('version','· установка не завершена')+'\nhttps://'+state['domain']+'/control/')
@@ -117,7 +135,7 @@ def main():
         json_write(DATA/'auth.json',cfg,mode=0o600,user='relayadmin',group='relayadmin');write(ROOT/'setup-code',code+'\n',mode=0o600)
         subprocess.run(['systemctl','restart','relay-panel'],check=True);show_access()
     elif command=='refresh':refresh()
-    else:raise RuntimeError('Команды: status, backup, setup-code. Для обновления повтори команду установки из README.')
+    else:raise RuntimeError('Команды: status, backup, restore, migration status|stop|resume, setup-code. Для обновления повтори команду установки из README.')
 
 if __name__=='__main__':
     try:main()

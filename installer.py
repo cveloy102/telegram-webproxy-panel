@@ -23,7 +23,7 @@ import urllib.request
 
 from units import units, caddyfile, FIREWALL
 
-VERSION='0.2.0-beta.1'
+VERSION='0.3.0-beta.1'
 RELAY_COMMIT='c8adb8b7c6b7fc46c12ae3acb68be9070c26a8e8'
 RELAY_SHA256='a78b48f536180143dd7005785ca397310c36ee0b132e19949a45d64f586ab549'
 MTPROXY_COMMIT='f36d8af769ffaeac36978d38c2c0f6d1104c2137'
@@ -292,6 +292,11 @@ def main():
     os.umask(0o077)
     existing=json.loads(STATE.read_text()) if STATE.exists() else None
     preflight(existing)
+    sys.path.insert(0,str(P(__file__).parent/'panel'))
+    from migration_state import blocked, mutation
+    if blocked():raise RuntimeError('Сервер остановлен для переноса. Обновление не запустит службы. Сначала проверь relay-panel migration status; для возврата используй migration resume.')
+    migration_guard=mutation()
+    migration_guard.__enter__()
     import fcntl
     lock=open('/run/lock/relay-panel-install.lock','w')
     try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)

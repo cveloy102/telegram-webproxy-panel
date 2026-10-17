@@ -40,8 +40,10 @@ def install(setup,options,work):
     shutil.copyfile(binary,'/usr/local/bin/hysteria.new');Path('/usr/local/bin/hysteria.new').chmod(0o755);os.replace('/usr/local/bin/hysteria.new','/usr/local/bin/hysteria')
     setup.write('/etc/systemd/system/relay-hy2.service',f'''[Unit]
 Description=Hysteria authentication and accounting controller
+ConditionPathExists=!/var/lib/relay-migration/blocked
 After=network.target
 [Service]
+ExecCondition=+/usr/bin/python3 {CURRENT}/panel/migration_state.py --can-start
 Group=relayadmin
 ExecStart=/usr/bin/python3 {CURRENT}/panel/hy2_control.py
 Restart=on-failure
@@ -59,10 +61,12 @@ WantedBy=multi-user.target
 ''')
     setup.write('/etc/systemd/system/hysteria-server.service',f'''[Unit]
 Description=Hysteria 2 server
+ConditionPathExists=!/var/lib/relay-migration/blocked
 After=network-online.target relay-hy2.service caddy.service
 Requires=relay-hy2.service
 Wants=network-online.target
 [Service]
+ExecCondition=+/usr/bin/python3 {CURRENT}/panel/migration_state.py --can-start
 User=hysteria
 Group=hysteria
 ExecStart=/usr/local/bin/hysteria server --config /etc/hysteria/config.yaml

@@ -17,7 +17,8 @@ import time
 from urllib.parse import quote
 
 import qrcode
-from flask import Flask, abort, jsonify, redirect, render_template, request, session
+from flask import Flask, abort, jsonify, redirect, render_template, request, session, g
+from migration_state import mutation, blocked, state as migration_state
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 DATA = pathlib.Path(os.getenv('RELAY_DATA', '/var/lib/relay-panel'))
@@ -88,6 +89,12 @@ register_hysteria(app,authorized,csrf)
 
 from backup_routes import register as register_backups
 register_backups(app,authorized,csrf)
+from migration_routes import register as register_migration
+register_migration(app,authorized,csrf)
+
+@app.context_processor
+def migration_context():
+    return {'migration_blocked':blocked()}
 
 @app.before_request
 def protect():
@@ -102,6 +109,25 @@ def protect():
             abort(403)
     if request.path.startswith(PREFIX+'/api/') and not authorized():
         abort(401)
+    phase=migration_state().get('phase')
+    backup_payload=request.get_json(silent=True)
+    repair_backup=request.path==PREFIX+'/api/backup/action' and phase=='error' and isinstance(backup_payload,dict) and backup_payload.get('op') in ('configure','connect')
+    auth_stopped=request.path==PREFIX+'/login' and phase not in ('running','freezing','resuming')
+    if request.method=='POST' and request.path not in (PREFIX+'/logout',PREFIX+'/api/migration/action') and not auth_stopped and not repair_backup:
+        try:
+            guard=mutation();guard.__enter__();g.migration_guard=guard
+        except ValueError as error:return jsonify(error=str(error)),409
+    if request.method=='POST' and request.path==PREFIX+'/login' and phase in ('freezing','resuming'):
+        return 'Перенос выполняется. Дождись завершения и повтори вход.',409
+
+@app.teardown_request
+def release_migration_guard(error):
+    guard=g.pop('migration_guard',None)
+    if guard is not None:guard.__exit__(None,None,None)
+
+@app.get('/maintenance')
+def maintenance():
+    return ('Сервер остановлен для переноса. Подключения временно недоступны.' if blocked() else 'Служба временно недоступна. Попробуй подключиться позже.'),503
 
 @app.after_request
 def headers(response):
@@ -211,7 +237,7 @@ def monitor_once():
 def monitor_loop():
     while True:
         try:
-            monitor_once()
+            with mutation():monitor_once()
         except Exception:
             pass
         time.sleep(5)
@@ -371,7 +397,7 @@ def api_ack():
 
 @app.get(PREFIX+'/static/<path:name>')
 def assets(name):
-    if name not in ('panel.css','panel.js','hysteria.css','hysteria.js','backups.js','backups.css'):
+    if name not in ('panel.css','panel.js','hysteria.css','hysteria.js','backups.js','backups.css','migration.js'):
         abort(404)
     return app.send_static_file(name)
 

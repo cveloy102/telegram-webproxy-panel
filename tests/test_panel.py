@@ -23,6 +23,22 @@ import app as panel
 from helper import Controller, atomic
 
 class PanelTests(unittest.TestCase):
+    def test_migration_auth_assets_and_frozen_writes(self):
+        from unittest.mock import patch
+        import migration_state
+        self.assertEqual(self.client.get('/control/api/migration/state',base_url='https://proxy.example.com').status_code,401)
+        self.setup_owner()
+        response=self.client.get('/control/migration',base_url='https://proxy.example.com')
+        self.assertEqual(response.status_code,200)
+        self.assertIn('migration.js',response.text)
+        with self.client.get('/control/static/migration.js',base_url='https://proxy.example.com') as asset:
+            self.assertEqual(asset.status_code,200)
+        with tempfile.TemporaryDirectory() as folder,patch.object(migration_state,'ROOT',pathlib.Path(folder)):
+            pathlib.Path(folder,'blocked').touch()
+            self.assertEqual(self.post('api/action',op='create').status_code,409)
+            self.assertEqual(self.client.get('/control/migration',base_url='https://proxy.example.com').status_code,200)
+            self.assertEqual(self.post('logout').status_code,302)
+
     def setUp(self):
         self.client=panel.app.test_client()
         with panel.db() as conn:

@@ -13,6 +13,7 @@ import subprocess
 import threading
 import time
 from backup_archive import layout, encrypt
+from migration_state import blocked, mutation
 
 PREFIX=os.getenv('RELAY_BACKUP_PREFIX','relay')
 DATA=Path(os.getenv('RELAY_BACKUP_DATA','/var/lib/relay-backup'))
@@ -34,6 +35,7 @@ class Controller:
         self.config=self.load('config.json',{'folder':'','recipient':'','automatic':True,'dataset':secrets.token_hex(8)})
         self.state=self.load('state.json',{'generation':0,'saved_generation':0,'uploaded':0,'error':'','last_attempt':0})
         self.fingerprint=None
+        self.migration=None
     def load(self,name,default):
         p=self.data/name
         return json.loads(p.read_text()) if p.exists() else default
@@ -47,6 +49,12 @@ class Controller:
     def call(self,p):
         op=p.get('op')
         if op=='status':return self.status()
+        if op=='migration_status':return self.migration.status()
+        if op in ('migration_stop','migration_resume'):
+            return self.migration.call(op.removeprefix('migration_'),p.get('confirm',''))
+        if op=='changed' and blocked():return {'ok':True}
+        if op in ('configure','connect') and self.migration and self.migration.busy:
+            raise ValueError('Дождись завершения переноса перед изменением подключения Диска.')
         if op=='changed':self.dirty();return {'ok':True}
         if op=='configure':
             if self.running:raise ValueError('Дождись завершения текущей копии перед изменением настроек.')
@@ -75,9 +83,9 @@ class Controller:
         result=subprocess.run(['rclone',*args,'--config',str(self.data/'rclone.conf'),'--drive-root-folder-id',self.config['folder'],'--contimeout','15s','--timeout','60s','--retries','2'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=240)
         if result.returncode:raise ValueError('Google Диск недоступен или доступ к папке отозван. Копия сохранена локально; загрузка будет повторена.')
         return result.stdout
-    def snapshot(self):
+    def snapshot(self,final=False):
         with self.lock:
-            if self.running:return
+            if self.running or (blocked() and not final):return
             self.running=True;generation=self.state['generation'];self.state['last_attempt']=time.time();self.save()
         try:
             # One epoch for controller mutations; accounting may advance by a few seconds.
@@ -121,6 +129,7 @@ class Controller:
                     if p.is_file() and not p.is_symlink():parts.extend([str(p.relative_to(folder)).encode(),p.read_bytes()])
         return hashlib.sha256(b'\0'.join(parts)).hexdigest()
     def tick(self):
+        if blocked():return
         signature=self.signature()
         if signature!=self.fingerprint:self.fingerprint=signature;self.dirty()
         with self.lock:
@@ -134,6 +143,8 @@ class Controller:
 def serve():
     import grp,pwd
     controller=Controller();uid=pwd.getpwnam(GROUP).pw_uid
+    from migration_control import Migration
+    controller.migration=Migration(controller)
     class Handler(socketserver.StreamRequestHandler):
         def handle(self):
             self.request.settimeout(20)
@@ -142,7 +153,13 @@ def serve():
             try:
                 raw=self.rfile.readline(32769)
                 if len(raw)>32768:raise ValueError('Слишком большой запрос.')
-                result={'ok':True,'data':controller.call(json.loads(raw))}
+                payload=json.loads(raw)
+                repair=payload.get('op') in ('configure','connect') and controller.migration.data['phase']=='error'
+                if payload.get('op') in ('status','changed','migration_status','migration_stop','migration_resume'):
+                    data=controller.call(payload)
+                else:
+                    with mutation(allow_error=repair):data=controller.call(payload)
+                result={'ok':True,'data':data}
             except (ValueError,OSError) as e:result={'ok':False,'error':str(e)}
             except Exception:result={'ok':False,'error':'Служба копирования недоступна.'}
             self.wfile.write(json.dumps(result,ensure_ascii=False).encode()+b'\n')

@@ -13,7 +13,7 @@ RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 MTPROXY_HARDEN=HARDEN.replace('AF_UNIX AF_INET AF_INET6','AF_UNIX AF_INET AF_INET6 AF_NETLINK')
 
 def units():
-    return {
+    result = {
 'relay-helper.service':f'''[Unit]
 Description=Relay Panel local key controller
 After=network.target
@@ -126,6 +126,11 @@ Persistent=true
 [Install]
 WantedBy=timers.target
 '''}
+    for name in ('mtproxy.service','tproxy-server.service','relay-refresh.service','relay-refresh.timer'):
+        result[name]=result[name].replace('[Unit]\n','[Unit]\nConditionPathExists=!/var/lib/relay-migration/blocked\n',1)
+        if name.endswith('.service'):
+            result[name]=result[name].replace('[Service]\n',f'[Service]\nExecCondition=+/usr/bin/python3 {CURRENT}/panel/migration_state.py --can-start\n',1)
+    return result
 
 FIREWALL='''table inet tproxy_backend {
  chain local_backend {
@@ -158,6 +163,10 @@ def caddyfile(domain,email=''):
     response_header_timeout 40s
    }
   }
+ }
+ handle_errors 502 503 {
+  rewrite * /maintenance
+  reverse_proxy 127.0.0.1:8082
  }
 }
 '''
