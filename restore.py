@@ -64,6 +64,7 @@ def restore_main(argv=None, *, confirmed=False):
         caddy=Path('/etc/caddy/Caddyfile')
         restored_caddy=merge_redirects(caddy.read_text(),redirects,domain)
         print('Дата копии (Unix):',manifest['created']);print('Telegram:',domain);print('Hysteria:',hy2 or 'нет')
+        print('AmneziaWG:',awg or 'нет')
         if args.inspect:print('Копия расшифрована, манифест и базы проверены. Данные сервера не изменены.');return
         current=json.loads(Path('/etc/relay-panel/install.json').read_text())
         if current['domain']!=domain or hy2 and current.get('hy2_domain')!=hy2:raise ValueError('Установи панель с прежними доменами из копии. Новые IP допустимы, домены должны совпадать.')
@@ -134,7 +135,10 @@ def restore_main(argv=None, *, confirmed=False):
                 except (OSError,ValueError):time.sleep(1)
             else:raise ValueError('Службы управления не стали готовы после восстановления.')
             if args.standby:print('Данные восстановлены в режиме ожидания. Проверь DNS, сертификаты и порты. Для включения: relay-panel migration resume')
-            else:print('Готово. Используй прежние пароль, 2FA и ключи. Проверь DNS обоих доменов и доступность UDP-порта',current.get('hy2_port','—'))
+            else:
+                print('Готово. Используй прежние пароль, 2FA и ключи. Проверь DNS всех доменов.')
+                for protocol,field in (('Hysteria','hy2_port'),('AmneziaWG','awg_port')):
+                    if field in current:print(protocol+': открой UDP '+str(current[field]))
         except Exception:
             if args.standby:
                 migration.standby()

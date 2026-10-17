@@ -94,12 +94,20 @@ with tempfile.TemporaryDirectory(prefix='relay-awg-smoke-',dir='/var/tmp') as fo
         # Limits remove the live peer; relaxing the limit restores the same config.
         helper({'op':'limits','id':uid,'quota_gb':0,'expires':'2020-01-01','enforce':True});curl(ok=False)
         helper({'op':'limits','id':uid,'quota_gb':0,'expires':'','enforce':False});curl()
+        helper({'op':'limits','id':uid,'quota_gb':1e-9,'expires':'','enforce':True});curl(ok=False)
+        helper({'op':'limits','id':uid,'quota_gb':0,'expires':'','enforce':False});curl()
         # Client netns must not reach a private destination through the tunnel.
         ns('awg-ci-client','ip','route','add','10.77.0.1/32','dev','awg-ci')
         result=subprocess.run(['ip','netns','exec','awg-ci-client','ping','-c','1','-W','1','10.77.0.1'],capture_output=True)
         assert result.returncode!=0,'VPN client reached the server management network'
         # Unchanged peers retain their configuration across service restarts.
         run('systemctl','restart','amneziawg-server','relay-awg');wait_ready();curl()
+        assert helper({'op':'key','id':uid})['conf']==original[uid]
+
+        import manage
+        rollback=manage.backup(include_programs=True)
+        helper({'op':'rotate','id':uid});curl(ok=False)
+        manage.restore_internal(rollback);wait_ready();curl()
         assert helper({'op':'key','id':uid})['conf']==original[uid]
 
         identity=work/'identity.txt';run('age-keygen','-o',str(identity))
