@@ -104,8 +104,11 @@ def ask(prompt,default=None,validate=None):
     while True:
         try:
             with console_mode():value=input(prompt+hint+': ').strip()
+            # Some consoles use surrogateescape instead of raising on decode.
+            # Reject those malformed bytes here before saving any user value.
+            value.encode('utf-8')
         except EOFError:raise RuntimeError('Нужна интерактивная консоль. Открой терминал VPS и повтори команду.') from None
-        except UnicodeDecodeError:
+        except UnicodeError:
             print('  Не удалось прочитать ввод в UTF-8. Выбери кодировку UTF-8 в терминале и введи значение заново. Попробуй набрать его вручную вместо вставки.')
             continue
         if not value and default is not None:value=default
