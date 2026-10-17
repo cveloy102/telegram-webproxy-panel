@@ -84,7 +84,14 @@ with tempfile.TemporaryDirectory(prefix='relay-wizard-smoke-') as folder:
         if 'Старый сервер выключен' in prompt:return 'нет'
         raise AssertionError(prompt)
     original_wait=wizard.wait_check
-    def fast_wait(label,check):return original_wait(label,check,interval=1)
+    def fast_wait(label,check):
+        attempts=0
+        def bounded_check():
+            nonlocal attempts
+            attempts+=1
+            if attempts>20:raise AssertionError('Wizard check did not become ready: '+label)
+            check()
+        return original_wait(label,bounded_check,interval=1)
     # Hysteria's DNS name must resolve locally for its HTTPS cover check.
     with open('/etc/hosts','a') as hosts:hosts.write('\n127.0.0.1 hy2.example.com\n')
     with contextlib.ExitStack() as stack:
