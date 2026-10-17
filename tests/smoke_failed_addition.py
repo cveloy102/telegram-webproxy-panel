@@ -14,6 +14,7 @@ from backup_archive import build_tar,layout
 
 state=json.loads(setup.STATE.read_text());assert not state.get('hy2_domain') and not state.get('awg_domain')
 users=Path('/etc/relay-panel/users.json').read_bytes();owner=Path('/var/lib/relay-panel/auth.json').read_bytes()
+subprocess.run(['sysctl','-w','net.ipv4.ip_forward=0'],check=True,capture_output=True)
 forwarding=Path('/proc/sys/net/ipv4/ip_forward').read_text().strip()
 caddyfile=setup.caddyfile;activate=setup.activate
 
