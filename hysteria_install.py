@@ -80,7 +80,7 @@ LimitNOFILE=1048576
 WantedBy=multi-user.target
 ''')
 
-def activate(setup,options):
+def activate(setup,options,standby=False):
     if not options.get('hy2_domain'):return
     import sys
     sys.path.insert(0,str(Path('/opt/relay-panel/current/panel')))
@@ -97,8 +97,9 @@ def activate(setup,options):
     setup.write(pending,yaml.safe_dump(cfg),mode=0o640,group='hysteria')
     pending.replace(controller.config)
     setup.run('systemctl','enable','relay-hy2')
-    setup.run('systemctl','restart','relay-hy2')
     setup.run('systemctl','enable','hysteria-server')
+    if standby:return
+    setup.run('systemctl','restart','relay-hy2')
     setup.run('systemctl','restart','hysteria-server')
     import time
     for attempt in range(60):

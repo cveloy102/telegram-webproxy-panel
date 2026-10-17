@@ -23,7 +23,7 @@ import urllib.request
 
 from units import units, caddyfile, FIREWALL
 
-VERSION='0.3.0-beta.1'
+VERSION='0.4.0-beta.1'
 RELAY_COMMIT='c8adb8b7c6b7fc46c12ae3acb68be9070c26a8e8'
 RELAY_SHA256='a78b48f536180143dd7005785ca397310c36ee0b132e19949a45d64f586ab549'
 MTPROXY_COMMIT='f36d8af769ffaeac36978d38c2c0f6d1104c2137'
@@ -252,18 +252,18 @@ def install_files(source,options,work,candidate,mtproxy):
     run('/usr/local/bin/tproxy-server','-config','/etc/tproxy-server/config.json','-profiles-file','/etc/tproxy-server/profiles.json','-check')
     run('systemd-analyze','verify',*[str(P('/etc/systemd/system')/name) for name in units()])
 
-def activate():
+def activate(standby=False):
     run('systemctl','daemon-reload')
     run('systemctl','enable','--now','tproxy-firewall')
     run('systemctl','enable','mtproxy','tproxy-server','relay-helper','relay-panel','relay-refresh.timer')
     run('systemctl','reset-failed','mtproxy','tproxy-server','relay-helper','relay-panel')
-    run('systemctl','restart','mtproxy','tproxy-server','relay-helper','relay-panel')
-    run('systemctl','start','relay-refresh.timer')
+    run('systemctl','restart',*(['relay-helper','relay-panel'] if standby else ['mtproxy','tproxy-server','relay-helper','relay-panel']))
+    if not standby:run('systemctl','start','relay-refresh.timer')
     run('systemctl','enable','--now','caddy')
     run('systemctl','restart','caddy')
     run('systemctl','enable','--now','relay-backup')
     from hysteria_install import activate as activate_hysteria
-    activate_hysteria(sys.modules[__name__],json.loads(STATE.read_text()))
+    activate_hysteria(sys.modules[__name__],json.loads(STATE.read_text()),standby=standby)
 
 def health(domain,public=True):
     for _ in range(25):
@@ -288,9 +288,13 @@ def main():
     parser=argparse.ArgumentParser(description='Telegram WEB Proxy + панель: интерактивная установка')
     parser.add_argument('--source',type=P,default=P(__file__).resolve().parent)
     parser.add_argument('--revision',default='local')
+    parser.add_argument('--recover',action='store_true',help='Открыть мастер восстановления из зашифрованной копии')
     args=parser.parse_args()
     os.umask(0o077)
     existing=json.loads(STATE.read_text()) if STATE.exists() else None
+    from recovery_wizard import pending, run_wizard
+    if args.recover or pending():
+        run_wizard(args.source.resolve(),args.revision,setup=sys.modules[__name__]);return
     preflight(existing)
     sys.path.insert(0,str(P(__file__).parent/'panel'))
     from migration_state import blocked, mutation
@@ -313,6 +317,13 @@ def main():
         if choice!='3':raise RuntimeError('Неизвестный пункт меню.')
         options=existing
     else:
+        choice=ask('1 — новая установка, 2 — восстановить из резервной копии, 0 — выход','1')
+        if choice=='0':return
+        if choice=='2':
+            migration_guard.__exit__(None,None,None)
+            lock.close()
+            run_wizard(args.source.resolve(),args.revision,setup=sys.modules[__name__]);return
+        if choice!='1':raise RuntimeError('Неизвестный пункт меню.')
         domain=ask('Адрес прокси (например tg.example.com)',validate=domain_name)
         detected=public_ipv4()
         def valid_ip(value):

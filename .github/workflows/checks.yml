@@ -17,7 +17,7 @@ jobs:
           sudo apt-get install -y python3-flask python3-qrcode python3-pil python3-yaml age rclone shellcheck
           bash -n install.sh
           shellcheck install.sh
-          python3 -m compileall -q installer.py manage.py restore.py units.py panel tests
+          python3 -m compileall -q installer.py manage.py restore.py recovery_wizard.py units.py panel tests
           python3 -m unittest discover -s tests -v
           node --check panel/static/panel.js
           node --check panel/static/hysteria.js
@@ -29,6 +29,8 @@ jobs:
         run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_recovery.py
       - name: Migration stop, retry, resume and standby recovery on expendable Ubuntu runner
         run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_migration.py
+      - name: Fresh recovery wizard, DNS waiting and interrupted session resume
+        run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_wizard.py
       - name: Installer diagnostics on failure
         if: failure()
         run: |

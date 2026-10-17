@@ -6,7 +6,7 @@ REPOSITORY='cveloy102/telegram-webproxy-panel'
 REF='main'
 
 if [[ "${1:-}" == '--help' ]]; then
-  echo 'Установка: bash install.sh. Нужны root, Ubuntu 24.04 amd64 и домен.'
+  echo 'Установка: bash install.sh. Восстановление: bash install.sh --recover. Нужны root, Ubuntu 24.04 amd64 и домен.'
   exit 0
 fi
 if (( EUID != 0 )); then

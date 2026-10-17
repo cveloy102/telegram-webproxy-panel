@@ -45,7 +45,7 @@ def restore_files(files,paths):
                 p.chmod(0o755 if p.is_dir() else 0o644)
                 if name.startswith('hysteria'):shutil.chown(p,'hysteria','hysteria')
 
-def restore_main(argv=None):
+def restore_main(argv=None, *, confirmed=False):
     if os.geteuid()!=0:raise ValueError('Восстановление запускается от root.')
     parser=argparse.ArgumentParser(description='Восстановить зашифрованную копию Relay Panel')
     parser.add_argument('archive',type=Path);parser.add_argument('--identity',type=Path,required=True);parser.add_argument('--inspect',action='store_true')
@@ -65,7 +65,7 @@ def restore_main(argv=None):
         if args.inspect:print('Копия расшифрована, манифест и базы проверены. Данные сервера не изменены.');return
         current=json.loads(Path('/etc/relay-panel/install.json').read_text())
         if current['domain']!=domain or hy2 and current.get('hy2_domain')!=hy2:raise ValueError('Установи панель с прежними доменами из копии. Новые IP допустимы, домены должны совпадать.')
-        if input('Будут заменены все ключи, история и вход владельца. Введи ВОССТАНОВИТЬ: ').strip()!='ВОССТАНОВИТЬ':print('Отменено.');return
+        if not confirmed and input('Будут заменены все ключи, история и вход владельца. Введи ВОССТАНОВИТЬ: ').strip()!='ВОССТАНОВИТЬ':print('Отменено.');return
         import manage
         services=['relay-backup','relay-panel','relay-helper','relay-hy2','hysteria-server','tproxy-server','mtproxy']
         subprocess.run(['systemctl','stop',*services],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -123,8 +123,11 @@ def restore_main(argv=None):
             if args.standby:print('Данные восстановлены в режиме ожидания. Проверь DNS, сертификаты и порты. Для включения: relay-panel migration resume')
             else:print('Готово. Используй прежние пароль, 2FA и ключи. Проверь DNS обоих доменов и доступность UDP-порта',current.get('hy2_port','—'))
         except Exception:
-            migration.data.update(phase='running',error='',step='Восстановление отменено')
-            migration.data.pop('previous',None);migration.save();(migration.root/'blocked').unlink(missing_ok=True)
+            if args.standby:
+                migration.standby()
+            else:
+                migration.data.update(phase='running',error='',step='Восстановление отменено')
+                migration.data.pop('previous',None);migration.save();(migration.root/'blocked').unlink(missing_ok=True)
             manage.restore_internal(before)
             raise ValueError('Восстановление не завершено. Предыдущее состояние возвращено; проверь службы через relay-panel status.') from None
 

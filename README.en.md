@@ -20,6 +20,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/cveloy102/telegram-webproxy-
 
 For a non-root account, run `sudo -i` first. If curl is missing, install it with `apt-get update && apt-get install -y curl python3`.
 
+For disaster recovery, choose **2 — восстановить из резервной копии**. Supply a downloaded `.tar.gz.age` archive and your private `relay-recovery-key.txt`. The wizard imports data with traffic disabled, waits for DNS and validated HTTPS, and requires confirmation that the old server is stopped before enabling clients. Re-run the installer after an interruption to resume; the private identity is not saved by the wizard. See [recovery instructions](docs/backups.md#мастер-восстановления-на-новом-vps).
+
 Requirements: systemd, public IPv4, 1 GB RAM minimum (2 GB recommended), 2 GB free disk space, reachable/free TCP ports 80 and 443, and a domain with exactly one A record pointing to the VPS. Remove AAAA records for that hostname; use DNS-only mode if using Cloudflare. The installer does not modify provider DNS or firewall rules.
 
 The wizard asks for the hostname, public IPv4, landing-page title, optional Telegram contact, landing-page theme and optional certificate email. It installs the relay, MTProxy, Caddy HTTPS, panel and systemd services. Secrets are generated on the server.
