@@ -19,7 +19,7 @@ import tempfile
 import threading
 import time
 
-from migration_state import mutation, blocked
+from migration_state import mutation
 
 INTERFACE = 'awg-relay'
 BINARY = '/usr/local/bin/awg'

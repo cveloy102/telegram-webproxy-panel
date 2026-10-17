@@ -5,7 +5,6 @@ Only an expendable GitHub runner: creates namespaces, updates OS and firewall.
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -17,7 +16,6 @@ ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT));sys.path.i
 import installer as setup
 import amnezia_install
 from awg_routes import helper
-from awg_control import Controller,INTERFACE
 from backup_archive import encrypt,layout
 from restore import main as restore
 

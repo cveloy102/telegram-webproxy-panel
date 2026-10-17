@@ -23,6 +23,16 @@ import app as panel
 from helper import Controller, atomic
 
 class PanelTests(unittest.TestCase):
+    def test_shared_navigation_highlights_current_protocol_or_management_page(self):
+        self.setup_owner()
+        for path in ('/control/','/control/hysteria','/control/amnezia','/control/backups','/control/migration'):
+            with self.subTest(path=path):
+                response=self.client.get(path,base_url='https://proxy.example.com')
+                self.assertEqual(response.status_code,200)
+                self.assertEqual(response.text.count('aria-current="page"'),1)
+                self.assertIn('href="'+path+'" aria-current="page"',response.text)
+                for label in ('Протоколы','Управление сервером','AmneziaWG','Резервные копии','Перенос сервера'):self.assertIn(label,response.text)
+
     def test_amnezia_auth_csrf_export_and_unavailable_service(self):
         from unittest.mock import patch
         url='https://proxy.example.com'

@@ -1,7 +1,6 @@
 import base64
 import contextlib
 import hashlib
-import io
 import json
 import os
 from pathlib import Path
@@ -15,7 +14,6 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT));sys.path.insert(0,str(ROOT/'panel'))
-import awg_control
 from awg_control import Controller
 from backup_archive import build_tar,inspect_tar
 import recovery_wizard

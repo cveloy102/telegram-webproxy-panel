@@ -1,12 +1,11 @@
 """Fixed Linux network lifecycle. No shell commands or user-supplied hooks."""
 import ipaddress
 import json
-import os
 from pathlib import Path
 import signal
 import subprocess
 import time
-from awg_control import Controller, INTERFACE, BINARY
+from awg_control import Controller, INTERFACE
 
 
 def run(*args,**kw):return subprocess.run(args,check=True,capture_output=True,text=True,timeout=10,**kw)
