@@ -24,7 +24,7 @@ import urllib.request
 
 from units import units, caddyfile, FIREWALL
 
-VERSION='0.4.0-beta.2'
+VERSION='0.4.0-beta.3'
 RELAY_COMMIT='c8adb8b7c6b7fc46c12ae3acb68be9070c26a8e8'
 RELAY_SHA256='a78b48f536180143dd7005785ca397310c36ee0b132e19949a45d64f586ab549'
 MTPROXY_COMMIT='f36d8af769ffaeac36978d38c2c0f6d1104c2137'
@@ -84,6 +84,9 @@ def ask(prompt,default=None,validate=None):
     while True:
         try:value=input(prompt+(f' [{default}]' if default is not None else '')+': ').strip()
         except EOFError:raise RuntimeError('Нужна интерактивная консоль. Открой терминал VPS и повтори команду.') from None
+        except UnicodeDecodeError:
+            print('  Не удалось прочитать ввод в UTF-8. Выбери кодировку UTF-8 в терминале и введи значение заново. Попробуй набрать его вручную вместо вставки.')
+            continue
         if not value and default is not None:value=default
         try:return validate(value) if validate else value
         except ValueError as error:print('  '+str(error))

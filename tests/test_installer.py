@@ -1,4 +1,5 @@
 import io
+import contextlib
 import json
 import pathlib
 import os
@@ -14,6 +15,47 @@ from installer import domain_name,site_options,render_site,check_dns,check_tcp_p
 from units import caddyfile,units,FIREWALL
 
 class InstallerTests(unittest.TestCase):
+    @unittest.skipUnless(os.name=='posix','Unix terminal input')
+    def test_real_terminal_recovers_from_malformed_utf8(self):
+        import pty
+        import select
+        import subprocess
+        import time
+        master,slave=pty.openpty()
+        code='from installer import ask; print("RESULT:"+ask("Domain", "old.example.com"))'
+        process=subprocess.Popen([sys.executable,'-c',code],cwd=pathlib.Path(__file__).resolve().parents[1],
+                                 stdin=slave,stdout=slave,stderr=slave)
+        os.close(slave)
+        output=bytearray()
+        def until(marker):
+            deadline=time.monotonic()+5
+            while marker not in output:
+                if time.monotonic()>=deadline:self.fail('Terminal input test timed out')
+                if select.select([master],[],[],0.1)[0]:
+                    try:chunk=os.read(master,65536)
+                    except OSError:break
+                    if not chunk:break
+                    output.extend(chunk)
+            self.assertIn(marker,output)
+        try:
+            until(b'Domain [old.example.com]: ')
+            os.write(master,b'\xd0X\n')
+            until('Не удалось прочитать ввод'.encode())
+            os.write(master,b'tg.example.com\n')
+            until(b'RESULT:tg.example.com')
+            self.assertEqual(process.wait(timeout=5),0)
+        finally:
+            if process.poll() is None:process.kill();process.wait()
+            os.close(master)
+
+    def test_invalid_utf8_input_retries_without_accepting_default(self):
+        from installer import ask
+        broken=UnicodeDecodeError('utf-8',b'\xd0X',0,1,'invalid continuation byte')
+        with patch('builtins.input',side_effect=[broken,'tg.example.com']),contextlib.redirect_stdout(io.StringIO()) as output:
+            value=ask('Домен','old.example.com',domain_name)
+        self.assertEqual(value,'tg.example.com')
+        self.assertIn('UTF-8',output.getvalue())
+
     @unittest.skipUnless(os.name=='posix','Linux socket reuse rules')
     def test_active_listener_is_rejected_but_closed_connections_do_not_block_install(self):
         with socket.socket() as listener:
