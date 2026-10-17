@@ -153,6 +153,19 @@ def check_dns(domain,address):
     if v4!={address}:raise RuntimeError('A-запись домена должна указывать только на IP этого VPS: '+address+'. Если используешь Cloudflare, выбери DNS only (серое облако). Сейчас: '+', '.join(sorted(v4)))
     if v6:raise RuntimeError('У домена есть AAAA-запись. Первая версия установщика работает через IPv4: убери AAAA у выбранного поддомена и повтори проверку.')
 
+
+def check_tcp_port(port):
+    for family,address in ((socket.AF_INET,'0.0.0.0'),(socket.AF_INET6,'::')):
+        try:
+            with socket.socket(family,socket.SOCK_STREAM) as sock:
+                # Closed connections in TIME_WAIT are not a running service.
+                sock.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+                if family==socket.AF_INET6:sock.setsockopt(socket.IPPROTO_IPV6,socket.IPV6_V6ONLY,1)
+                sock.bind((address,port))
+        except OSError as error:
+            if error.errno in (97,99):continue
+            raise RuntimeError(f'Порт {port} уже занят. Нужен чистый VPS; чужие службы не будут остановлены.') from None
+
 def preflight(existing):
     if os.name!='posix' or os.geteuid()!=0:raise RuntimeError('Запусти в консоли VPS под root: сначала sudo -i, затем команду установки.')
     release=dict(line.split('=',1) for line in P('/etc/os-release').read_text().splitlines() if '=' in line)
@@ -166,14 +179,7 @@ def preflight(existing):
         for path in ('/etc/caddy/Caddyfile','/etc/tproxy-server','/etc/mtproxy','/opt/MTProxy','/var/lib/relay-panel'):
             if P(path).exists():raise RuntimeError('Найдена существующая конфигурация '+path+'. Установщик предназначен для чистого VPS и не будет её перезаписывать.')
         for port in (80,443,2398,8888,8080,8081,8082):
-            for family,address in ((socket.AF_INET,'0.0.0.0'),(socket.AF_INET6,'::')):
-                try:
-                    with socket.socket(family,socket.SOCK_STREAM) as sock:
-                        if family==socket.AF_INET6:sock.setsockopt(socket.IPPROTO_IPV6,socket.IPV6_V6ONLY,1)
-                        sock.bind((address,port))
-                except OSError as error:
-                    if error.errno in (97,99):continue
-                    raise RuntimeError(f'Порт {port} уже занят. Нужен чистый VPS; чужие службы не будут остановлены.') from None
+            check_tcp_port(port)
 
 def packages():
     print('Устанавливаю системные пакеты. Подробности: '+str(LOG))

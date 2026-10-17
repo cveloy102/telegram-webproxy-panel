@@ -1,6 +1,7 @@
 import io
 import json
 import pathlib
+import os
 import socket
 import sys
 import tarfile
@@ -9,10 +10,22 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]))
-from installer import domain_name,site_options,render_site,check_dns,extract
+from installer import domain_name,site_options,render_site,check_dns,check_tcp_port,extract
 from units import caddyfile,units,FIREWALL
 
 class InstallerTests(unittest.TestCase):
+    @unittest.skipUnless(os.name=='posix','Linux socket reuse rules')
+    def test_active_listener_is_rejected_but_closed_connections_do_not_block_install(self):
+        with socket.socket() as listener:
+            listener.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+            listener.bind(('127.0.0.1',0));listener.listen()
+            port=listener.getsockname()[1]
+            with self.assertRaises(RuntimeError):check_tcp_port(port)
+            with socket.create_connection(('127.0.0.1',port)) as client:
+                connection,_=listener.accept();connection.close()
+                self.assertEqual(client.recv(1),b'')
+        check_tcp_port(port)
+
     def test_domain_cannot_inject_config(self):
         self.assertEqual(domain_name('TG.Example.COM.'),'tg.example.com')
         self.assertTrue(domain_name('прокси.example.com').startswith('xn--'))
