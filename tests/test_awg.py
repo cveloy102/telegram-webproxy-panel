@@ -100,6 +100,13 @@ class AmneziaTests(unittest.TestCase):
         (self.root/'migration').mkdir();(self.root/'migration/blocked').touch()
         with self.assertRaises(ValueError):self.c.call({'op':'toggle','id':self.uid,'enabled':False})
 
+    def test_readiness_checks_configured_identity_and_port(self):
+        with self.c.db() as c:s=self.c.settings(c)
+        with patch('awg_control.subprocess.check_output',side_effect=['(none)\n','0\n']):
+            with self.assertRaises(ValueError):self.c.call({'op':'migration_ready'})
+        with patch('awg_control.subprocess.check_output',side_effect=[s['public']+'\n',str(s['port'])+'\n']):
+            self.assertEqual(self.c.call({'op':'migration_ready'}),{'ok':True})
+
     def paths(self):
         paths={k:self.root/k for k in ('users','owner','hy2','usage','site','hy2cover')};paths['awg']=self.root/'awg'
         paths['owner'].mkdir(exist_ok=True)

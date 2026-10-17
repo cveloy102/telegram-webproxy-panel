@@ -92,6 +92,12 @@ def restore_internal(path):
     if not blocked() and state.get('awg_domain'):selected+=['amneziawg-server','relay-awg']
     if not state.get('awg_domain'):
         subprocess.run(['systemctl','disable','amneziawg-server','relay-awg'],capture_output=True)
+        incomplete=P('/var/lib/relay-awg')
+        if incomplete.exists():
+            # Keep failed-addition keys privately, outside the portable backup
+            # inventory, so recovery cannot accidentally re-enable that protocol.
+            quarantine=BACKUPS/('incomplete-awg-'+secrets.token_hex(6))
+            shutil.move(str(incomplete),str(quarantine))
     optional=[name for name in selected if P('/etc/systemd/system/'+name+'.service').exists()]
     if optional:
         subprocess.run(['systemctl','reset-failed',*optional],check=True)
