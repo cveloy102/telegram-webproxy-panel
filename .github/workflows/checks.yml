@@ -29,6 +29,8 @@ jobs:
           node --check panel/static/migration.js
       - name: Upgrade pinned pre-AWG release and preserve its existing users
         run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_legacy_upgrade.py
+      - name: Roll back a failed addition of both missing protocols
+        run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_failed_addition.py
       - name: Hysteria and encrypted recovery on expendable Ubuntu runner
         run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_recovery.py
       - name: Fresh recovery wizard, DNS waiting and interrupted session resume

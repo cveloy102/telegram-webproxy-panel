@@ -107,14 +107,22 @@ def restore_internal(path):
     selected=['relay-backup']
     if not blocked() and state.get('hy2_domain'):selected+=['relay-hy2','hysteria-server']
     if not blocked() and state.get('awg_domain'):selected+=['amneziawg-server','relay-awg']
-    if not state.get('awg_domain'):
-        subprocess.run(['systemctl','disable','amneziawg-server','relay-awg'],capture_output=True)
-        incomplete=P('/var/lib/relay-awg')
-        if incomplete.exists():
-            # Keep failed-addition keys privately, outside the portable backup
-            # inventory, so recovery cannot accidentally re-enable that protocol.
-            quarantine=BACKUPS/('incomplete-awg-'+secrets.token_hex(6))
-            shutil.move(str(incomplete),str(quarantine))
+    for field,services,paths in (
+        ('hy2_domain',('relay-hy2','hysteria-server'),('/var/lib/relay-hy2','/etc/hysteria','/var/lib/hysteria')),
+        ('awg_domain',('relay-awg','amneziawg-server'),('/var/lib/relay-awg',))):
+        if state.get(field):continue
+        subprocess.run(['systemctl','disable',*services],capture_output=True)
+        if field=='awg_domain':
+            previous=P('/var/lib/relay-awg/previous-forwarding')
+            if previous.exists() and previous.read_text().strip() in ('0','1'):
+                subprocess.run(['sysctl','-w','net.ipv4.ip_forward='+previous.read_text().strip()],check=True,capture_output=True)
+            for name in ('/etc/sysctl.d/80-relay-awg.conf','/etc/tmpfiles.d/relay-awg.conf'):P(name).unlink(missing_ok=True)
+        # Retain failed-addition secrets privately, outside the portable backup
+        # inventory. Neither reboot nor later recovery may re-enable that protocol.
+        present=[P(path) for path in paths if P(path).exists()]
+        if present:
+            quarantine=BACKUPS/('incomplete-'+field+'-'+secrets.token_hex(6));quarantine.mkdir(mode=0o700)
+            for index,path in enumerate(present):shutil.move(str(path),str(quarantine/(str(index)+'-'+path.name)))
     optional=[name for name in selected if P('/etc/systemd/system/'+name+'.service').exists()]
     if optional:
         subprocess.run(['systemctl','reset-failed',*optional],check=True)

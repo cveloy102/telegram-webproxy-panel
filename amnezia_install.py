@@ -113,6 +113,8 @@ def install(setup,options,work):
         target=Path('/usr/local/bin')/name;pending=target.with_suffix('.new')
         shutil.copyfile(work/name,pending);pending.chmod(0o755);pending.replace(target)
     setup.directory('/var/lib/relay-awg',mode=0o700)
+    previous=Path('/var/lib/relay-awg/previous-forwarding')
+    if not previous.exists():setup.write(previous,Path('/proc/sys/net/ipv4/ip_forward').read_text(),mode=0o600)
     setup.directory('/run/amneziawg',mode=0o700)
     # Runtime directory for the engine must exist again after a reboot.
     setup.write('/etc/tmpfiles.d/relay-awg.conf','d /run/amneziawg 0700 root root -\n')
