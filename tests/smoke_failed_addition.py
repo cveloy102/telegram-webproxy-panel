@@ -51,6 +51,8 @@ assert Path('/proc/sys/net/ipv4/ip_forward').read_text().strip()==forwarding
 for name in ('relay-hy2','hysteria-server','relay-awg','amneziawg-server'):
     assert subprocess.run(['systemctl','is-active','--quiet',name]).returncode!=0
     assert subprocess.run(['systemctl','is-enabled','--quiet',name]).returncode!=0
+    load=subprocess.run(['systemctl','show',name,'-p','LoadState','--value'],capture_output=True,text=True)
+    assert load.stdout.strip()=='not-found',name
 for path in ('/var/lib/relay-hy2','/var/lib/relay-awg','/etc/hysteria','/etc/sysctl.d/80-relay-awg.conf'):
     assert not Path(path).exists(),path
 manifest=build_tar(io.BytesIO(),layout())

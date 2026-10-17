@@ -112,6 +112,7 @@ def restore_internal(path):
         ('awg_domain',('relay-awg','amneziawg-server'),('/var/lib/relay-awg',))):
         if state.get(field):continue
         subprocess.run(['systemctl','disable',*services],capture_output=True)
+        for name in services:P('/etc/systemd/system/'+name+'.service').unlink(missing_ok=True)
         if field=='awg_domain':
             previous=P('/var/lib/relay-awg/previous-forwarding')
             if previous.exists() and previous.read_text().strip() in ('0','1'):
@@ -123,6 +124,7 @@ def restore_internal(path):
         if present:
             quarantine=BACKUPS/('incomplete-'+field+'-'+secrets.token_hex(6));quarantine.mkdir(mode=0o700)
             for index,path in enumerate(present):shutil.move(str(path),str(quarantine/(str(index)+'-'+path.name)))
+    subprocess.run(['systemctl','daemon-reload'],check=True)
     optional=[name for name in selected if P('/etc/systemd/system/'+name+'.service').exists()]
     if optional:
         subprocess.run(['systemctl','reset-failed',*optional],check=True)
