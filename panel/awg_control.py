@@ -178,7 +178,11 @@ class Controller:
         op=p.get('op')
         if op=='status':return self.public()
         if op=='migration_ready':
-            subprocess.run([BINARY,'show',INTERFACE,'public-key'],check=True,capture_output=True,timeout=5);return {'ok':True}
+            actual=subprocess.check_output([BINARY,'show',INTERFACE,'public-key'],text=True,timeout=5).strip()
+            port=subprocess.check_output([BINARY,'show',INTERFACE,'listen-port'],text=True,timeout=5).strip()
+            with self.db() as c:s=self.settings(c)
+            if actual!=s['public'] or port!=str(s['port']):raise ValueError('AmneziaWG ещё применяет настройки')
+            return {'ok':True}
         if op=='migration_sample':
             with self.lock:self.collect()
             return {'ok':True}
