@@ -14,6 +14,7 @@ import re
 import secrets
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import tarfile
@@ -33,6 +34,22 @@ BASE=P('/opt/relay-panel')
 STATE=P('/etc/relay-panel/install.json')
 LOG=P('/var/log/relay-panel-install.log')
 SERVICES=['relay-panel','relay-helper','tproxy-server','mtproxy','relay-refresh.timer']
+
+
+def open_install_lock():
+    # Reopen without O_CREAT/O_TRUNC: Linux protected_regular rejects root writes
+    # to somebody else's file in a sticky directory. Never follow a lock symlink.
+    path='/run/lock/relay-panel-install.lock'
+    flags=os.O_RDONLY|os.O_NOFOLLOW
+    try:descriptor=os.open(path,flags)
+    except FileNotFoundError:
+        try:descriptor=os.open(path,flags|os.O_CREAT|os.O_EXCL,0o600)
+        except FileExistsError:descriptor=os.open(path,flags)
+    info=os.fstat(descriptor)
+    if not stat.S_ISREG(info.st_mode) or info.st_uid!=0:
+        os.close(descriptor)
+        raise RuntimeError('Файл блокировки установщика должен быть обычным файлом root: '+path+'. Данные сервера не изменены.')
+    return os.fdopen(descriptor,'r')
 
 def domain_name(value):
     value=value.strip().lower().rstrip('.')
@@ -302,7 +319,7 @@ def main():
     migration_guard=mutation()
     migration_guard.__enter__()
     import fcntl
-    lock=open('/run/lock/relay-panel-install.lock','w')
+    lock=open_install_lock()
     try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
     except BlockingIOError:raise RuntimeError('Другой установщик уже работает.') from None
     print('\nTelegram WEB Proxy + Relay Panel · '+VERSION+'\n')

@@ -73,6 +73,7 @@ class RecoveryWizardTests(unittest.TestCase):
             state={'schema':1,'session':'fixture','sha256':wizard.digest(archive),'installed':True,'imported':True,'dns':True,'https':True,'options':{'domain':'tg.example.com','ip':'1.1.1.1'}}
             wizard.save(state,root)
             setup=Mock();setup.STATE=root/'install.json'
+            setup.open_install_lock.side_effect=lambda:open(root/'install.lock','a')
             setup.STATE.write_text(json.dumps({'recovery_session':'fixture'}))
             setup.check_dns.side_effect=KeyboardInterrupt
             with patch.object(os,'geteuid',return_value=0),patch.object(wizard,'identity_file') as key,patch.object(wizard,'inspect_archive') as inspect,patch.object(wizard,'prepare') as prepare,contextlib.redirect_stdout(io.StringIO()),self.assertRaises(KeyboardInterrupt):
@@ -87,6 +88,7 @@ class RecoveryWizardTests(unittest.TestCase):
             root=Path(folder);(root/'archive.tar.gz.age').write_bytes(b'changed')
             wizard.save({'schema':1,'session':'fixture','sha256':'wrong'},root)
             setup=Mock();setup.STATE=root/'install.json'
+            setup.open_install_lock.side_effect=lambda:open(root/'install.lock','a')
             setup.STATE.write_text(json.dumps({'recovery_session':'fixture'}))
             with patch.object(os,'geteuid',return_value=0),contextlib.redirect_stdout(io.StringIO()),self.assertRaisesRegex(RuntimeError,'изменился'):
                 wizard.run_wizard(root,'test',setup=setup,root=root)

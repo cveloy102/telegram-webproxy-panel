@@ -198,7 +198,7 @@ def run_wizard(source,revision,*,setup=None,root=ROOT):
     sys.path.insert(0,str(Path(source)/'panel'))
     os.umask(0o077)
     import fcntl
-    with open('/run/lock/relay-panel-install.lock','w') as lock:
+    with setup.open_install_lock() as lock:
         try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError:raise RuntimeError('Другой установщик уже работает.') from None
         data=read_state(root)
