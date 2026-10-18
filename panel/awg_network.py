@@ -26,6 +26,8 @@ def firewall():
  }
  chain input {
   type filter hook input priority -10; policy accept;
+  iifname "awg-relay" ip daddr { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/4, 240.0.0.0/4 } drop
+  iifname "awg-relay" ip saddr 10.77.0.0/24 tcp dport { 80, 443 } accept
   iifname "awg-relay" drop
  }
  chain nat {
