@@ -94,6 +94,31 @@ class AmneziaTests(unittest.TestCase):
         self.c.call({'op':'global','paused':False})
         self.assertEqual(conf,self.c.call({'op':'key','id':self.uid})['conf'])
 
+    def test_online_freshness_access_and_calendar_totals(self):
+        # April 1st at 00:00 UTC+6: daily/monthly totals must exclude March.
+        import datetime as dt
+        now=int(dt.datetime(2027,3,31,18,tzinfo=dt.timezone.utc).timestamp())
+        pub=self.user()['public']
+        self.c.ingest({pub:(10,20,now-1)},'one',now-1)
+        self.c.ingest({pub:(15,30,now)},'one',now)
+        with patch('awg_control.time.time',return_value=now):
+            state=self.c.public();u=state['users'][0]
+            self.assertTrue(state['telemetry_ok']);self.assertTrue(u['online'])
+            self.assertEqual((u['today'],u['month'],u['up']+u['down']),(15,15,45))
+            self.c.call({'op':'toggle','id':self.uid,'enabled':False})
+            self.assertFalse(self.c.public()['users'][0]['online'])
+            self.c.call({'op':'toggle','id':self.uid,'enabled':True})
+            self.c.call({'op':'global','paused':True})
+            self.assertFalse(self.c.public()['users'][0]['online'])
+            self.c.call({'op':'global','paused':False})
+        with patch('awg_control.time.time',return_value=now+20):
+            self.assertFalse(self.c.public()['telemetry_ok'])
+            self.assertFalse(self.c.public()['users'][0]['online'])
+        for last,expected in ((now-179,True),(now-180,False),(0,False),(now+1,False)):
+            self.c.ingest({pub:(15,30,last)},'one',now)
+            with patch('awg_control.time.time',return_value=now):
+                self.assertEqual(self.c.public()['users'][0]['online'],expected)
+
     def test_invalid_limits_and_migration_gate(self):
         for quota in (float('nan'),float('inf'),True,-1):
             with self.assertRaises(ValueError):self.c.call({'op':'limits','id':self.uid,'quota_gb':quota,'enforce':True})

@@ -138,7 +138,7 @@ class Controller:
                 c.execute('INSERT OR REPLACE INTO samples VALUES(?,?,?,?)',(u['id'],up,down,epoch))
                 c.execute('UPDATE users SET up=up+?,down=down+?,last=max(last,?) WHERE id=?',(du,dd,last,u['id']))
                 c.execute('INSERT INTO days VALUES(?,?,?,?) ON CONFLICT(id,day) DO UPDATE SET up=up+excluded.up,down=down+excluded.down',(u['id'],day,du,dd))
-                online[u['id']]=bool(last and now-last<180)
+                online[u['id']]=bool(last and 0<=now-last<180)
             c.execute('DELETE FROM days WHERE day<?',((dt.datetime.fromtimestamp(now,TZ)-dt.timedelta(days=90)).strftime('%Y-%m-%d'),))
         self.online=online;self.updated=now
 
@@ -157,13 +157,19 @@ class Controller:
 
     def public(self):
         with self.lock,self.db() as c:
-            s=self.settings(c);users=[]
+            s=self.settings(c);users=[];now=time.time()
+            fresh=bool(self.updated and 0<=now-self.updated<20)
+            day=dt.datetime.fromtimestamp(now,TZ).strftime('%Y-%m-%d');month=day[:7]
             for u in c.execute('SELECT * FROM users ORDER BY created,id'):
+                history=[dict(r) for r in c.execute('SELECT day,up,down FROM days WHERE id=? ORDER BY day',(u['id'],))]
+                allowed=self.allowed(u,s)
                 users.append({**{k:u[k] for k in ('id','name','grp','enabled','created','expires','quota','enforce','last','up','down')},
-                              'allowed':self.allowed(u,s),'reason':self.reason(u),'online':bool(time.time()-self.updated<20 and self.online.get(u['id'])),
+                              'allowed':allowed,'reason':self.reason(u),'online':bool(allowed and fresh and self.online.get(u['id'])),
                               'address':'10.77.0.'+str(u['address']),
-                              'history':[dict(r) for r in c.execute('SELECT day,up,down FROM days WHERE id=? ORDER BY day',(u['id'],))]})
-            return {'users':users,'host':s['host'],'port':s['port'],'paused':s['paused'],'updated':self.updated,'version':'3.1'}
+                              'today':sum(r['up']+r['down'] for r in history if r['day']==day),
+                              'month':sum(r['up']+r['down'] for r in history if r['day'].startswith(month)),
+                              'history':history})
+            return {'users':users,'host':s['host'],'port':s['port'],'paused':s['paused'],'updated':self.updated,'telemetry_ok':fresh,'version':'3.1'}
 
     def config(self,u,s):
         lines=['[Interface]','PrivateKey = '+u['private'],

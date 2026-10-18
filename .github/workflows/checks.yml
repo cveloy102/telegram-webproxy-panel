@@ -25,6 +25,7 @@ jobs:
           node --check panel/static/panel.js
           node --check panel/static/hysteria.js
           node --check panel/static/amnezia.js
+          node tests/test_awg_ui.js
           node --check panel/static/backups.js
           node --check panel/static/migration.js
       - name: Upgrade pinned pre-AWG release and preserve its existing users
