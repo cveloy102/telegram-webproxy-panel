@@ -129,6 +129,16 @@ def restore_internal(path):
     if optional:
         subprocess.run(['systemctl','reset-failed',*optional],check=True)
         subprocess.run(['systemctl','restart',*optional],check=True)
+    # Type=simple reports started before the control socket and tunnel are ready.
+    # Finish rollback only after the restored protocols actually accept requests.
+    if not blocked():
+        for field,module in (('awg_domain','awg_routes'),('hy2_domain','hy2_routes')):
+            if not state.get(field):continue
+            helper=__import__(module,fromlist=['helper']).helper
+            for attempt in range(60):
+                try:helper({'op':'migration_ready'});break
+                except (OSError,ValueError):time.sleep(1)
+            else:raise RuntimeError('После отката не готов протокол: '+field)
 
 def refresh():
     sys.path.insert(0,str(P(__file__).parent/'panel'))
