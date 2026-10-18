@@ -3,7 +3,7 @@ const $=s=>document.querySelector(s), csrf=$('meta[name="csrf"]').content;
 let state=null, busy=false, downloadURL=null, selected=null;
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const bytes=n=>{if(n===null||n===undefined)return '—';if(!n)return '0 Б';const a=['Б','КБ','МБ','ГБ','ТБ'],i=Math.max(0,Math.min(4,Math.floor(Math.log(n)/Math.log(1024))));return (n/1024**i).toLocaleString('ru-RU',{maximumFractionDigits:1})+' '+a[i];};
-const date=t=>t?new Intl.DateTimeFormat('ru-RU',{timeZone:'Asia/Omsk',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(t*1000)):'—';
+const date=t=>t?new Intl.DateTimeFormat('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(t*1000)):'—';
 function status(u){if(!u.enabled)return 'Ⅱ Приостановлен';if(state.paused)return 'Ⅱ Всё на паузе';if(!u.allowed)return '× '+u.reason;if(!state.telemetry_ok)return '? Нет свежих данных';return u.online?'● Онлайн':'○ Офлайн';}
 function graph(history){const days=[];for(let i=13;i>=0;i--){const day=new Date(Date.now()+6*3600000-i*86400000).toISOString().slice(0,10),r=history.find(x=>x.day===day);days.push({day,n:r?r.up+r.down:0});}const max=Math.max(1,...days.map(x=>x.n));return '<h4>// Трафик за 14 дней</h4><div class="hy-bars" role="img" aria-label="Трафик по дням">'+days.map(x=>`<div class="hy-bar hy-h${Math.max(1,Math.round(x.n/max*18))}" title="${x.day}: ${bytes(x.n)}"></div>`).join('')+`</div><div class="hy-legend"><span>${days[0].day}</span><span>${days[13].day}</span></div>`;}
 function message(s){$('#message').textContent=s;}

@@ -44,6 +44,7 @@ jobs:
           node --check panel/static/amnezia.js
           node tests/test_awg_ui.js
           node tests/test_hy2_ui.js
+          node tests/test_local_time.js
           node tests/test_migration_ui.js
           node tests/test_backup_key.js
           node --check panel/static/backups.js

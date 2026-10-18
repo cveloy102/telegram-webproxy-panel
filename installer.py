@@ -281,7 +281,7 @@ def build(source,work):
     archive=work/'relay.tar.gz';download(f'https://codeload.github.com/telegramdesktop/tproxy-server/tar.gz/{RELAY_COMMIT}',archive,RELAY_SHA256)
     relay=extract(archive,work/'relay')
     run('patch','--batch','--forward','-p1','-i',str(source/'relay/accounting.patch'),cwd=relay)
-    for name in ('accounting.go','accounting_test.go'):shutil.copyfile(source/'relay'/name,relay/'internal/session'/name)
+    for name in ('accounting.go','accounting_test.go','shared_profile_test.go'):shutil.copyfile(source/'relay'/name,relay/'internal/session'/name)
     run('gofmt','-w','internal/session/accounting.go','internal/session/accounting_test.go','internal/session/manager.go','internal/session/session.go','internal/server/server.go',cwd=relay)
     run('go','test','./...',cwd=relay)
     run('go','build','-trimpath','-o',str(work/'tproxy-server'),'./cmd/tproxy-server',cwd=relay)

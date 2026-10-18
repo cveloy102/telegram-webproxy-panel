@@ -24,6 +24,6 @@ vm.runInContext(fs.readFileSync(path.join(__dirname,'../panel/static/hysteria.js
   assert.match(node('#dialogbody').innerHTML,/value="2026-10-18"/,'Expiry editor shifted the stored UTC date');
   assert.match(node('#dialogbody').innerHTML,/Срок считается по UTC;/);
   assert.match(node('#detail').innerHTML,/2026-10-18<\/span>/,'Graph shifted to the next UTC day');
-  assert.match(node('#started').textContent,/UTC/);
+  assert.match(node('#started').textContent,/местное время/);
   console.log('PASS: Hysteria expiry editor and traffic graph preserve the stored UTC calendar');
 })().catch(error=>{console.error(error);process.exitCode=1;});
