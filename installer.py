@@ -24,7 +24,7 @@ import urllib.request
 
 from units import units, caddyfile, FIREWALL
 
-VERSION='0.5.0-beta.1'
+VERSION='0.5.0'
 RELAY_COMMIT='c8adb8b7c6b7fc46c12ae3acb68be9070c26a8e8'
 RELAY_SHA256='a78b48f536180143dd7005785ca397310c36ee0b132e19949a45d64f586ab549'
 MTPROXY_COMMIT='f36d8af769ffaeac36978d38c2c0f6d1104c2137'
@@ -121,6 +121,13 @@ def yes_no(value):
     if value in ('да','yes','y'):return 'да'
     if value in ('нет','no','n'):return 'нет'
     raise ValueError('Введи да или нет (также можно yes или no). Enter выбирает ответ из подсказки.')
+
+
+def menu(prompt,choices,default=None):
+    def valid(value):
+        if value not in choices:raise ValueError('Выбери пункт: '+', '.join(choices)+'.')
+        return value
+    return ask(prompt,default,valid)
 
 
 def new_options():
@@ -222,6 +229,12 @@ def check_dns(domain,address):
     v6={item[4][0] for item in records if item[0]==socket.AF_INET6}
     if v4!={address}:raise RuntimeError('A-запись домена должна указывать только на IP этого VPS: '+address+'. Если используешь Cloudflare, выбери DNS only (серое облако). Сейчас: '+', '.join(sorted(v4)))
     if v6:raise RuntimeError('У домена есть AAAA-запись. Первая версия установщика работает через IPv4: убери AAAA у выбранного поддомена и повтори проверку.')
+
+
+def check_udp_port(port):
+    with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as probe:
+        try:probe.bind(('0.0.0.0',port))
+        except OSError:raise ValueError('UDP-порт уже занят. Выбери другой порт.') from None
 
 
 def check_tcp_port(port):
@@ -396,67 +409,70 @@ def main():
     sys.path.insert(0,str(P(__file__).parent/'panel'))
     from migration_state import blocked, mutation
     if blocked():raise RuntimeError('Сервер остановлен для переноса. Обновление не запустит службы. Сначала проверь relay-panel migration status; для возврата используй migration resume.')
-    migration_guard=mutation()
-    migration_guard.__enter__()
-    import fcntl
-    lock=open_install_lock()
-    try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
-    except BlockingIOError:raise RuntimeError('Другой установщик уже работает.') from None
-    print('\nTelegram WEB Proxy + Relay Panel · '+VERSION+'\n')
-    if existing:
-        print('Найдена установка для '+existing['domain']+'. Ключи и пароль будут сохранены.')
-        choice=ask('1 — проверить, 2 — резервная копия, 3 — обновить / продолжить установку, 0 — выход','1')
-        if choice=='0':return
-        from manage import backup,show_access
-        if choice=='2':print('Резервная копия: '+str(backup()));return
-        if choice=='1':
-            health(existing['domain']);existing['phase']='complete';json_write(STATE,existing,mode=0o600);show_access();return
-        if choice!='3':raise RuntimeError('Неизвестный пункт меню.')
-        options=dict(existing)
-        optional_protocols(options)
-    else:
-        choice=ask('1 — новая установка, 2 — восстановить из резервной копии, 0 — выход','1')
-        if choice=='0':return
-        if choice=='2':
-            migration_guard.__exit__(None,None,None)
-            lock.close()
-            run_wizard(args.source.resolve(),args.revision,setup=sys.modules[__name__]);return
-        if choice!='1':raise RuntimeError('Неизвестный пункт меню.')
-        options=new_options()
-    print('\nПрокси: '+options['domain']+'\nПанель: https://'+options['domain']+'/control/')
-    print('Будут установлены MTProxy, релей, Caddy, панель и автозапуск. Настройка займёт несколько минут.')
-    if ask('Начать? да / нет','нет',yes_no)!='да':print('Отменено.');return
-    directory('/etc/relay-panel',mode=0o700)
-    if not existing:json_write(STATE,options,mode=0o600)
-    packages();users()
-    with tempfile.TemporaryDirectory(prefix='relay-panel-build-',dir='/var/tmp') as folder:
-        work=P(folder);candidate,mtproxy=build(args.source.resolve(),work)
-        # Keep the previous config, binary and source tree before any activation change.
-        snapshot=None
+    with contextlib.ExitStack() as guards:
+        guards.enter_context(mutation())
+        import fcntl
+        lock=guards.enter_context(open_install_lock())
+        try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:raise RuntimeError('Другой установщик уже работает.') from None
+        print('\nTelegram WEB Proxy + Relay Panel · '+VERSION+'\n')
         if existing:
-            run('systemctl','stop','relay-panel','relay-helper')
-            from manage import backup
-            snapshot=backup(include_programs=True)
-            print('Резервная копия: '+str(snapshot))
-        try:
-            # The rollback archive must contain the previous protocol selection.
-            json_write(STATE,options,mode=0o600)
-            install_files(args.source.resolve(),options,work,candidate,mtproxy)
-            activate()
-            health(options['domain'],public=False)
-        except Exception:
-            if snapshot:
-                from manage import restore_internal
-                restore_internal(snapshot)
-                print('Предыдущая версия восстановлена.')
-            else:
-                subprocess.run(['systemctl','stop',*SERVICES],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-            raise
-    options.update(version=VERSION,revision=args.revision,phase='https-pending');json_write(STATE,options,mode=0o600)
-    health(options['domain'])
-    options['phase']='complete';json_write(STATE,options,mode=0o600)
-    from manage import show_access
-    print('\nГОТОВО. Прокси и панель установлены.\n');show_access()
+            print('Найдена установка для '+existing['domain']+'. Ключи и пароль будут сохранены.')
+            choice=menu('1 — проверить, 2 — резервная копия, 3 — обновить / продолжить установку, 0 — выход',('0','1','2','3'),'1')
+            if choice=='0':return
+            from manage import backup,show_access
+            if choice=='2':print('Резервная копия: '+str(backup()));return
+            if choice=='1':
+                health(existing['domain']);existing['phase']='complete';json_write(STATE,existing,mode=0o600);show_access();return
+            if choice!='3':raise RuntimeError('Неизвестный пункт меню.')
+            options=dict(existing)
+            optional_protocols(options)
+        else:
+            choice=menu('1 — новая установка, 2 — восстановить из резервной копии, 0 — выход',('0','1','2'),'1')
+            if choice=='0':return
+            if choice=='2':
+                guards.close()
+                run_wizard(args.source.resolve(),args.revision,setup=sys.modules[__name__]);return
+            if choice!='1':raise RuntimeError('Неизвестный пункт меню.')
+            options=new_options()
+        print('\nПрокси: '+options['domain']+'\nПанель: https://'+options['domain']+'/control/')
+        print('Будут установлены MTProxy, релей, Caddy, панель и автозапуск. Настройка займёт несколько минут.')
+        if ask('Начать? да / нет','нет',yes_no)!='да':print('Отменено.');return
+        directory('/etc/relay-panel',mode=0o700)
+        if not existing:json_write(STATE,options,mode=0o600)
+        packages();users()
+        with tempfile.TemporaryDirectory(prefix='relay-panel-build-',dir='/var/tmp') as folder:
+            work=P(folder);candidate,mtproxy=build(args.source.resolve(),work)
+            # Keep the previous config, binary and source tree before any activation change.
+            snapshot=None
+            if existing:
+                run('systemctl','stop','relay-panel','relay-helper')
+                from manage import backup
+                try:snapshot=backup(include_programs=True)
+                except (Exception,KeyboardInterrupt):
+                    # A full disk or unreadable backup must not leave the old UI down.
+                    run('systemctl','restart','relay-helper','relay-panel')
+                    raise
+                print('Резервная копия: '+str(snapshot))
+            try:
+                # The rollback archive must contain the previous protocol selection.
+                json_write(STATE,options,mode=0o600)
+                install_files(args.source.resolve(),options,work,candidate,mtproxy)
+                activate()
+                health(options['domain'],public=False)
+            except (Exception,KeyboardInterrupt):
+                if snapshot:
+                    from manage import restore_internal
+                    restore_internal(snapshot)
+                    print('Предыдущая версия восстановлена.')
+                else:
+                    subprocess.run(['systemctl','stop',*SERVICES],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                raise
+        options.update(version=VERSION,revision=args.revision,phase='https-pending');json_write(STATE,options,mode=0o600)
+        health(options['domain'])
+        options['phase']='complete';json_write(STATE,options,mode=0o600)
+        from manage import show_access
+        print('\nГОТОВО. Прокси и панель установлены.\n');show_access()
 
 if __name__=='__main__':
     try:main()

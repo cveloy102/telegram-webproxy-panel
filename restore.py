@@ -46,6 +46,18 @@ def restore_files(files,paths):
                 p.chmod(0o755 if p.is_dir() else 0o644)
                 if name.startswith('hysteria'):shutil.chown(p,'hysteria','hysteria')
 
+
+def validate_target(manifest,current):
+    if current['domain']!=manifest['telegram_domain']:
+        raise ValueError('Установи панель с прежним доменом из копии. Новый IP допустим.')
+    for name,flag,field in (('Hysteria','hysteria','hy2_domain'),('AmneziaWG','amnezia','awg_domain')):
+        archived=bool(manifest.get(flag));installed=bool(current.get(field))
+        if archived!=installed:
+            raise ValueError('Набор протоколов не совпадает: '+name+'. Используй установку с тем же набором протоколов, что в копии.')
+        archived_domain=manifest.get('hysteria_domain' if flag=='hysteria' else 'amnezia_domain')
+        if archived and current[field]!=archived_domain:
+            raise ValueError('Сначала установи '+name+' с прежним доменом из копии.')
+
 def restore_main(argv=None, *, confirmed=False):
     if os.geteuid()!=0:raise ValueError('Восстановление запускается от root.')
     parser=argparse.ArgumentParser(description='Восстановить зашифрованную копию Relay Panel')
@@ -61,15 +73,13 @@ def restore_main(argv=None, *, confirmed=False):
         domain=domain_name(manifest['telegram_domain']);hy2=domain_name(manifest['hysteria_domain']) if manifest['hysteria'] else None
         awg=domain_name(manifest['amnezia_domain']) if manifest.get('amnezia') else None
         redirects=manifest.get('redirects',[])
-        caddy=Path('/etc/caddy/Caddyfile')
-        restored_caddy=merge_redirects(caddy.read_text(),redirects,domain)
         print('Дата копии (Unix):',manifest['created']);print('Telegram:',domain);print('Hysteria:',hy2 or 'нет')
         print('AmneziaWG:',awg or 'нет')
         if args.inspect:print('Копия расшифрована, манифест и базы проверены. Данные сервера не изменены.');return
         current=json.loads(Path('/etc/relay-panel/install.json').read_text())
-        if current['domain']!=domain or hy2 and current.get('hy2_domain')!=hy2:raise ValueError('Установи панель с прежними доменами из копии. Новые IP допустимы, домены должны совпадать.')
-        if awg and current.get('awg_domain')!=awg:raise ValueError('Сначала установи AmneziaWG с прежним доменом из копии.')
-        if not awg and current.get('awg_domain'):raise ValueError('В этой копии нет AmneziaWG. Восстанавливай её в установку без AmneziaWG, чтобы не смешать пользователей.')
+        validate_target(manifest,current)
+        caddy=Path('/etc/caddy/Caddyfile')
+        restored_caddy=merge_redirects(caddy.read_text(),redirects,domain)
         if not confirmed and input('Будут заменены все ключи, история и вход владельца. Введи ВОССТАНОВИТЬ: ').strip()!='ВОССТАНОВИТЬ':print('Отменено.');return
         import manage
         services=['relay-backup','relay-panel','relay-helper','relay-hy2','hysteria-server','relay-awg','amneziawg-server','tproxy-server','mtproxy']

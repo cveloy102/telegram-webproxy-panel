@@ -1,13 +1,23 @@
 import datetime as dt
 import json
+import sys
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
 import yaml
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'panel'))
 from hy2_control import Controller, TZ
 
 class HysteriaTests(unittest.TestCase):
+    def test_future_or_stale_sample_is_not_reported_online(self):
+        now=1800000000
+        self.c.ingest({}, {'default':1},'one',now)
+        for current,fresh in ((now,True),(now-1,False),(now+21,False)):
+            with self.subTest(current=current),patch('hy2_control.time.time',return_value=current):
+                self.assertEqual(self.c.public()['telemetry_ok'],fresh)
+                if not fresh:self.assertFalse(self.c.public()['users'][0]['online'])
+
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.base=Path(self.temp.name)
         import migration_state

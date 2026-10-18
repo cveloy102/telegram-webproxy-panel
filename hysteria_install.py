@@ -21,12 +21,9 @@ def ask_options(setup,options):
             raise ValueError('Введи номер UDP-порта от 1024 до 65535 или нажми Enter для 24443.')
         value=int(value)
         if value==options.get('awg_port'):raise ValueError('Порт уже выбран для AmneziaWG')
+        setup.check_udp_port(value)
         return value
     number=setup.ask('UDP-порт Hysteria (число от 1024 до 65535)','24443',port)
-    import socket
-    with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as probe:
-        try:probe.bind(('0.0.0.0',number))
-        except OSError:raise ValueError('UDP-порт уже занят') from None
     options.update(hy2_domain=domain,hy2_port=number)
 
 def caddy(domain):

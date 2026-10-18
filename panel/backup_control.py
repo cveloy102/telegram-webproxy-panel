@@ -2,6 +2,7 @@
 import contextlib
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 import re
@@ -86,8 +87,9 @@ class Controller:
     def snapshot(self,final=False):
         with self.lock:
             if self.running or (blocked() and not final):return
-            self.running=True;generation=self.state['generation'];self.state['last_attempt']=time.time();self.save()
+            self.running=True;generation=self.state['generation'];self.state['last_attempt']=time.time()
         try:
+            with self.lock:self.save()
             # One epoch for controller mutations; accounting may advance by a few seconds.
             name='relay-'+self.config['dataset']+'-'+time.strftime('%Y%m%dT%H%M%SZ',time.gmtime())+'-'+secrets.token_hex(3)+'.tar.gz.age'
             path=self.data/name
@@ -101,12 +103,19 @@ class Controller:
                 self.state.update(saved_generation=generation,uploaded=int(time.time()),created=metadata['created'],file=name,error='')
                 if self.state['generation']==generation:self.state['manual']=False
                 self.save()
-            # Keep five encrypted local snapshots; cloud history is never deleted automatically.
-            for old in sorted(self.data.glob('relay-*.tar.gz.age'),key=lambda x:x.stat().st_mtime,reverse=True)[5:]:old.unlink()
         except Exception as error:
-            with self.lock:self.state['error']=str(error) if isinstance(error,ValueError) else 'Не удалось создать копию; задача будет повторена.';self.save()
+            with self.lock:
+                self.state['error']=str(error) if isinstance(error,ValueError) else 'Не удалось создать копию; задача будет повторена.'
+                try:self.save()
+                except OSError:logging.getLogger(__name__).warning('Backup error state could not be persisted')
         finally:
-            with self.lock:self.running=False
+            try:
+                # Bound local storage even throughout a prolonged cloud outage.
+                # Cloud history is never deleted automatically.
+                for old in sorted(self.data.glob('relay-*.tar.gz.age'),key=lambda x:x.stat().st_mtime,reverse=True)[5:]:old.unlink()
+            except OSError:logging.getLogger(__name__).warning('Local backup retention could not be applied')
+            finally:
+                with self.lock:self.running=False
     def signature(self):
         parts=[]
         if self.paths.get('awg') and (self.paths['awg']/'awg.sqlite3').exists():

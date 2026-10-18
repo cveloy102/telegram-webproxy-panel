@@ -167,7 +167,7 @@ class Controller:
     def public(self):
         now=int(time.time());day=dt.datetime.fromtimestamp(now,TZ).strftime('%Y-%m-%d')
         with self.lock,self.db() as c:
-            s=self.settings(c);users=[];fresh=now-self.updated<=20
+            s=self.settings(c);users=[];fresh=bool(self.updated and 0<=now-self.updated<=20)
             for row in c.execute('SELECT * FROM users ORDER BY created,id'):
                 u=dict(row);u['suffix']=u.pop('secret')[-4:];u['reason']=self.reason(u)
                 u['allowed']=self.allowed(u,s)

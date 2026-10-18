@@ -4,7 +4,7 @@
   <a href="https://github.com/cveloy102/telegram-webproxy-panel/actions/workflows/checks.yml"><img src="https://github.com/cveloy102/telegram-webproxy-panel/actions/workflows/checks.yml/badge.svg" alt="Checks"></a>
   <img src="https://img.shields.io/badge/Ubuntu-24.04_LTS-E95420?logo=ubuntu&amp;logoColor=white" alt="Ubuntu 24.04">
   <img src="https://img.shields.io/badge/platform-amd64-blue" alt="amd64">
-  <img src="https://img.shields.io/badge/status-beta-orange" alt="Beta">
+  <img src="https://img.shields.io/badge/release-0.5.0-green" alt="Release 0.5.0">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT"></a>
 </p>
 
@@ -18,11 +18,11 @@
 
 **Мастер восстановления:** на новом VPS выбери **2 — восстановить из резервной копии**. Укажи архив с Google Диска и свой `relay-recovery-key.txt`: мастер восстановит прежние доступы, покажет нужные DNS-записи и будет ждать успешных проверок с галочками. После обрыва SSH повтори команду установки — прогресс сохранён. [Пошаговое восстановление →](docs/backups.md#мастер-восстановления-на-новом-vps)
 
-Для Hysteria установщик дополнительно спросит отдельный домен (например `hy2.example.com`) и UDP-порт (по умолчанию `24443`). Создай A-запись этого домена на тот же VPS и открой выбранный UDP-порт. Hysteria можно не устанавливать. На уже работающей установке Telegram обновление сохраняет её прежний набор служб.
+Для Hysteria установщик дополнительно спросит отдельный домен (например `hy2.example.com`) и UDP-порт (по умолчанию `24443`). Создай A-запись этого домена на тот же VPS и открой выбранный UDP-порт. Hysteria можно не устанавливать. При обновлении установщик предлагает доустановить отсутствующие Hysteria и AmneziaWG, сохраняя действующие ключи.
 
 <p align="center"><a href="#-установка">Установка</a> · <a href="#-что-получишь">Возможности</a> · <a href="docs/DNS.md">Настройка домена</a> · <a href="docs/TROUBLESHOOTING.md">Если не работает</a> · <a href="README.en.md">English</a></p>
 
-> **Beta.** Нужен Telegram, в котором есть тип прокси **WEB**. Это отдельный тип: обычные MTProto и SOCKS5 не подойдут. Проект использует официальный proof-of-concept [telegramdesktop/tproxy-server](https://github.com/telegramdesktop/tproxy-server), а не является официальным продуктом Telegram. Работа в конкретной сети не гарантируется.
+> Нужен Telegram, в котором есть тип прокси **WEB**. Это отдельный тип: обычные MTProto и SOCKS5 не подойдут. Проект использует официальный proof-of-concept [telegramdesktop/tproxy-server](https://github.com/telegramdesktop/tproxy-server), а не является официальным продуктом Telegram. Работа в конкретной сети не гарантируется.
 
 ## ⚡ Установка
 
@@ -48,6 +48,9 @@ Email для сертификата: [можно пропустить]
 Установить также Hysteria 2? [да / нет]
 Отдельный домен Hysteria: hy2.example.com
 UDP-порт Hysteria: [24443]
+Установить также AmneziaWG 3.1? [да / нет]
+Домен AmneziaWG: awg.example.com
+UDP-порт AmneziaWG: [51820]
 Начать? да / нет
 ```
 
@@ -173,7 +176,7 @@ Telegram WEB → HTTPS :443 / Caddy → tproxy-server → MTProxy → Telegram
 
 [GitHub Actions](https://github.com/cveloy102/telegram-webproxy-panel/actions) проверяет Python, Bash и JavaScript, тесты панели и установщика, а затем установку настоящих служб на одноразовом Ubuntu runner: локальный HTTPS, управление ключами, сохранение данных и восстановление после сбоя обновления. Сертификат в тесте выпускается локальным CA; в обычной установке используется публичный HTTPS.
 
-Это не заменяет проверку Telegram на телефоне в конкретной сети. Известная основа проверена в частном развёртывании; универсальный установщик публикуется как **beta**.
+Версия панели — **0.5.0**. Матрица проверок и ограничения описаны в [TESTING.md](docs/TESTING.md). Автотесты не заменяют проверку Telegram и VPN на телефоне в конкретной сети.
 
 ## 📄 Лицензия
 

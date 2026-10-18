@@ -121,6 +121,8 @@ def protect():
         except ValueError as error:return jsonify(error=str(error)),409
     if request.method=='POST' and request.path==PREFIX+'/login' and phase in ('freezing','resuming'):
         return 'Перенос выполняется. Дождись завершения и повтори вход.',409
+    if request.method=='POST' and request.path.startswith(PREFIX+'/api/'):
+        if not isinstance(request.get_json(silent=True),dict):abort(400)
 
 @app.teardown_request
 def release_migration_guard(error):

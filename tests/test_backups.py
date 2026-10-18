@@ -47,6 +47,21 @@ class Backups(unittest.TestCase):
                 item=tarfile.TarInfo(name);item.type=kind;item.linkname='/etc/passwd';f.addfile(item)
             with self.assertRaises(ValueError):inspect_tar(target,self.root/'bad')
         self.assertFalse((self.root/'escape').exists())
+
+    def test_malformed_manifest_and_missing_protocol_data_are_rejected(self):
+        target=self.root/'original.tar.gz'
+        with target.open('wb') as output:build_tar(output,self.paths)
+        with tarfile.open(target) as source:payload={m.name:source.extractfile(m).read() for m in source}
+        original=json.loads(payload['manifest.json'])
+        malformed=[[],{**original,'hysteria':False},{**original,'hysteria':'yes'},
+                   {**original,'files':{**original['files'],'telegram/users.json':'bad'}}]
+        for index,manifest in enumerate(malformed):
+            broken=self.root/f'malformed-{index}.tar.gz'
+            with tarfile.open(broken,'w:gz') as archive:
+                for name,body in payload.items():
+                    if name=='manifest.json':body=json.dumps(manifest).encode()
+                    item=tarfile.TarInfo(name);item.size=len(body);archive.addfile(item,io.BytesIO(body))
+            with self.subTest(index=index),self.assertRaises(ValueError):inspect_tar(broken,self.root/f'extracted-{index}')
     def test_signature_ignores_traffic_but_detects_secret_and_delete(self):
         control=Controller(self.root/'backup',self.paths);a=control.signature()
         with sqlite3.connect(self.paths['hy2']/'hy2.sqlite3') as c:c.execute('UPDATE users SET up=42,down=50,last=99')
@@ -60,6 +75,25 @@ class Backups(unittest.TestCase):
         with patch('backup_control.encrypt',side_effect=ValueError('unavailable')):control.snapshot()
         self.assertTrue(control.status()['pending']);self.assertEqual(control.status()['uploaded'],0)
         self.assertEqual(control.status()['error'],'unavailable')
+
+    def test_cloud_outage_keeps_only_five_latest_local_snapshots(self):
+        control=Controller(self.root/'retention',self.paths);control.dirty();attempt=0
+        def fake_encrypt(path,*args):
+            nonlocal attempt
+            attempt+=1;path.write_bytes(str(attempt).encode());os.utime(path,(1800000000+attempt,1800000000+attempt))
+            return {'created':attempt}
+        with patch('backup_control.encrypt',side_effect=fake_encrypt),patch.object(control,'rclone',side_effect=ValueError('offline')):
+            for _ in range(8):control.snapshot()
+        self.assertEqual({p.read_text() for p in control.data.glob('relay-*.tar.gz.age')},{'4','5','6','7','8'})
+        self.assertTrue(control.status()['pending']);self.assertEqual(control.status()['uploaded'],0)
+        self.assertFalse(control.running)
+
+    def test_full_disk_does_not_leave_backup_worker_permanently_busy(self):
+        control=Controller(self.root/'disk-full',self.paths);control.dirty()
+        with patch.object(control,'save',side_effect=OSError('disk full')),self.assertLogs('backup_control',level='WARNING'):
+            control.snapshot()
+        self.assertFalse(control.running);self.assertTrue(control.status()['pending'])
+        self.assertEqual(control.status()['uploaded'],0)
     def test_folder_validation(self):
         self.assertEqual(folder_id('https://drive.google.com/drive/folders/synthetic_folder_123?hl=ru'),'synthetic_folder_123')
         for value in ('https://evil.example/folders/id','../../etc/passwd','bad;touch /tmp/a'):
