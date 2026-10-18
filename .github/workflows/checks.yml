@@ -43,6 +43,7 @@ jobs:
           node --check panel/static/hysteria.js
           node --check panel/static/amnezia.js
           node tests/test_awg_ui.js
+          node tests/test_hy2_ui.js
           node tests/test_backup_key.js
           node --check panel/static/backups.js
           node --check panel/static/migration.js
