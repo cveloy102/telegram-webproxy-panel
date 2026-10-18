@@ -75,6 +75,25 @@ class Backups(unittest.TestCase):
         with patch('backup_control.encrypt',side_effect=ValueError('unavailable')):control.snapshot()
         self.assertTrue(control.status()['pending']);self.assertEqual(control.status()['uploaded'],0)
         self.assertEqual(control.status()['error'],'unavailable')
+
+    def test_cloud_outage_keeps_only_five_latest_local_snapshots(self):
+        control=Controller(self.root/'retention',self.paths);control.dirty();attempt=0
+        def fake_encrypt(path,*args):
+            nonlocal attempt
+            attempt+=1;path.write_bytes(str(attempt).encode());os.utime(path,(1800000000+attempt,1800000000+attempt))
+            return {'created':attempt}
+        with patch('backup_control.encrypt',side_effect=fake_encrypt),patch.object(control,'rclone',side_effect=ValueError('offline')):
+            for _ in range(8):control.snapshot()
+        self.assertEqual({p.read_text() for p in control.data.glob('relay-*.tar.gz.age')},{'4','5','6','7','8'})
+        self.assertTrue(control.status()['pending']);self.assertEqual(control.status()['uploaded'],0)
+        self.assertFalse(control.running)
+
+    def test_full_disk_does_not_leave_backup_worker_permanently_busy(self):
+        control=Controller(self.root/'disk-full',self.paths);control.dirty()
+        with patch.object(control,'save',side_effect=OSError('disk full')),self.assertLogs('backup_control',level='WARNING'):
+            control.snapshot()
+        self.assertFalse(control.running);self.assertTrue(control.status()['pending'])
+        self.assertEqual(control.status()['uploaded'],0)
     def test_folder_validation(self):
         self.assertEqual(folder_id('https://drive.google.com/drive/folders/synthetic_folder_123?hl=ru'),'synthetic_folder_123')
         for value in ('https://evil.example/folders/id','../../etc/passwd','bad;touch /tmp/a'):
