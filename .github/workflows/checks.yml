@@ -5,10 +5,13 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: checks-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
 jobs:
   tests:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - name: Python and shell checks
@@ -17,22 +20,46 @@ jobs:
           sudo apt-get install -y python3-flask python3-qrcode python3-pil python3-yaml age rclone shellcheck
           bash -n install.sh
           shellcheck install.sh
-          python3 -m compileall -q installer.py manage.py restore.py recovery_wizard.py units.py panel tests
+          python3 -m compileall -q installer.py manage.py restore.py recovery_wizard.py units.py amnezia_install.py hysteria_install.py backup_install.py panel tests
           python3 -m unittest discover -s tests -v
           node --check panel/static/panel.js
           node --check panel/static/hysteria.js
+          node --check panel/static/amnezia.js
+          node tests/test_awg_ui.js
           node --check panel/static/backups.js
           node --check panel/static/migration.js
-      - name: Install, HTTPS, key management, update and rollback on expendable Ubuntu runner
-        run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_ubuntu.py
+      - name: Upgrade pinned pre-AWG release and preserve its existing users
+        run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_legacy_upgrade.py
+      - name: Roll back a failed addition of both missing protocols
+        run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_failed_addition.py
       - name: Hysteria and encrypted recovery on expendable Ubuntu runner
         run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_recovery.py
       - name: Fresh recovery wizard, DNS waiting and interrupted session resume
         run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_wizard.py
       - name: Migration stop, retry, resume and standby recovery on expendable Ubuntu runner
         run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_migration.py
-      - name: Installer diagnostics on failure
+      - name: Add AmneziaWG to existing Hysteria and preserve both protocols
+        run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_awg.py
+      - name: Installer and VPN diagnostics on failure
         if: failure()
         run: |
           sudo tail -n 100 /var/log/relay-panel-install.log || true
-          sudo journalctl --no-pager -n 60 -u relay-panel -u relay-helper -u tproxy-server -u mtproxy -u caddy || true
+          sudo journalctl --no-pager -n 60 -u relay-panel -u relay-helper -u tproxy-server -u mtproxy -u caddy -u amneziawg-server -u relay-awg || true
+  amnezia:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare panel on expendable Ubuntu runner
+        run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_ubuntu.py
+      - name: AmneziaWG 3.1 real tunnel, quotas, rollback and encrypted recovery
+        run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_awg.py
+      - name: Add Hysteria to existing AmneziaWG and preserve original configs
+        run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_recovery.py
+      - name: Update both installed protocols and recover from a failed update
+        run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_protocol_update.py
+      - name: VPN diagnostics on failure
+        if: failure()
+        run: |
+          sudo tail -n 120 /var/log/relay-panel-install.log || true
+          sudo journalctl --no-pager -n 120 -u amneziawg-server -u relay-awg || true

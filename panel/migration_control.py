@@ -8,7 +8,7 @@ import time
 
 from migration_state import ROOT, boot_id
 
-SERVICES = ('relay-refresh.timer', 'relay-refresh.service', 'hysteria-server',
+SERVICES = ('relay-refresh.timer', 'relay-refresh.service', 'relay-awg', 'amneziawg-server', 'hysteria-server',
             'relay-hy2', 'tproxy-server', 'mtproxy')
 
 
@@ -148,6 +148,10 @@ class Migration:
                 helper({'op':'migration_sample'})
             except (OSError, ValueError):
                 self.data['warning'] = 'Последний опрос Hysteria недоступен; сохранён ранее учтённый трафик.'
+        if self.data['previous'].get('amneziawg-server'):
+            from awg_routes import helper
+            try:helper({'op':'migration_sample'})
+            except (OSError,ValueError):self.data['warning']='Последний опрос AmneziaWG недоступен; сохранён ранее учтённый трафик.'
         for name in self.data['previous']:
             self.systemctl('stop', name)
         active = [name for name in self.data['previous'] if self.systemctl('is-active', name, check=False).returncode == 0]
@@ -168,7 +172,7 @@ class Migration:
         previous = self.data['previous'] if 'previous' in self.data else self.inventory()
         self.root.joinpath('blocked').unlink(missing_ok=True)
         # State continues to reject mutations until all requested services start.
-        for name in ('mtproxy', 'tproxy-server', 'relay-hy2', 'hysteria-server', 'relay-refresh.timer'):
+        for name in ('mtproxy', 'tproxy-server', 'relay-hy2', 'hysteria-server', 'amneziawg-server', 'relay-awg', 'relay-refresh.timer'):
             if previous.get(name):
                 self.systemctl('start', name)
                 if self.systemctl('is-active', name, check=False).returncode:
@@ -190,6 +194,12 @@ class Migration:
                     break
                 except (OSError,ValueError):time.sleep(.5)
             else:raise ValueError('Hysteria не стала готова. Проверь DNS и сертификат.')
+        if previous.get('amneziawg-server'):
+            from awg_routes import helper
+            for attempt in range(30):
+                try:helper({'op':'migration_ready'});break
+                except (OSError,ValueError):time.sleep(.5)
+            else:raise ValueError('AmneziaWG не стала готова после запуска')
         with self.lock:
             self.data.update(phase='running', step='Работа возобновлена', error='')
             self.data.pop('previous', None)

@@ -22,6 +22,10 @@ from backup_archive import layout,encrypt,decrypt
 from restore import main as restore
 
 options=json.loads(setup.STATE.read_text());options.update(hy2_domain='hy2.example.com',hy2_port=24443)
+awg_before={}
+if options.get('awg_domain'):
+    from awg_routes import helper as amnezia
+    awg_before={u['id']:amnezia({'op':'key','id':u['id']})['conf'] for u in amnezia({'op':'status'})['users']}
 setup.json_write(setup.STATE,options,mode=0o600)
 with tempfile.TemporaryDirectory(prefix='relay-recovery-smoke-') as tmp:
     work=Path(tmp);hysteria_install.install(setup,options,work)
@@ -73,5 +77,7 @@ with tempfile.TemporaryDirectory(prefix='relay-recovery-smoke-') as tmp:
     with patch('builtins.input',return_value='ВОССТАНОВИТЬ'):restore([str(encrypted),'--identity',str(key)])
     assert helper({'op':'key','id':'default'})['uri']==original
     assert len(helper({'op':'status'})['users'])==2
+    if awg_before:
+        assert awg_before=={u['id']:amnezia({'op':'key','id':u['id']})['conf'] for u in amnezia({'op':'status'})['users']}
     setup.health(options['domain'],public=False)
     print('Hysteria install, key lifecycle and encrypted restore: PASS')

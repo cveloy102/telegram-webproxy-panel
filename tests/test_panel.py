@@ -23,6 +23,37 @@ import app as panel
 from helper import Controller, atomic
 
 class PanelTests(unittest.TestCase):
+    def test_shared_navigation_highlights_current_protocol_or_management_page(self):
+        self.setup_owner()
+        for path in ('/control/','/control/hysteria','/control/amnezia','/control/backups','/control/migration'):
+            with self.subTest(path=path):
+                response=self.client.get(path,base_url='https://proxy.example.com')
+                self.assertEqual(response.status_code,200)
+                self.assertEqual(response.text.count('aria-current="page"'),1)
+                self.assertIn('href="'+path+'" aria-current="page"',response.text)
+                for label in ('Протоколы','Управление сервером','AmneziaWG','Резервные копии','Перенос сервера'):self.assertIn(label,response.text)
+
+    def test_amnezia_auth_csrf_export_and_unavailable_service(self):
+        from unittest.mock import patch
+        url='https://proxy.example.com'
+        self.assertEqual(self.client.get('/control/api/awg/state',base_url=url).status_code,401)
+        self.assertEqual(self.client.get('/control/amnezia',base_url=url).status_code,302)
+        self.setup_owner()
+        page=self.client.get('/control/amnezia',base_url=url)
+        self.assertEqual(page.status_code,200)
+        token=re.search(r'name="csrf" content="([^"]+)"',page.text).group(1)
+        self.assertEqual(self.client.post('/control/api/awg/key',base_url=url,json={'id':'u_one'}).status_code,403)
+        headers={'Origin':url,'X-CSRF-Token':token}
+        with patch('awg_routes.helper',return_value={'conf':'[Interface]\nPrivateKey = synthetic\n','filename':'u_one.conf','enabled':True}):
+            response=self.client.post('/control/api/awg/key',base_url=url,json={'id':'u_one'},headers=headers)
+            self.assertEqual(response.status_code,200)
+            self.assertEqual(response.json['filename'],'u_one.conf')
+            self.assertTrue(response.json['qr'])
+            self.assertEqual(response.headers['Cache-Control'],'no-store')
+        with patch('awg_routes.helper',side_effect=OSError):
+            self.assertEqual(self.client.get('/control/api/awg/state',base_url=url).status_code,503)
+        with self.client.get('/control/static/amnezia.js',base_url=url) as asset:self.assertEqual(asset.status_code,200)
+
     def test_migration_auth_assets_and_frozen_writes(self):
         from unittest.mock import patch
         import migration_state

@@ -1,0 +1,17 @@
+<div class="fc-navigation">
+  <nav class="fc-protocols" aria-label="Протоколы">
+    <span class="fc-label fc-nav-label">Протоколы</span>
+    <div class="fc-protocol-links">
+    {% for path,label,detail in [('/control/','Telegram','WEB-прокси'),('/control/hysteria','Hysteria','VPN / Hysteria 2'),('/control/amnezia','AmneziaWG','VPN / AWG 3.1')] %}
+      <a class="fc-protocol" href="{{path}}"{% if request.path==path %} aria-current="page"{% endif %}><strong>{{label}}</strong><span>{{detail}}</span></a>
+    {% endfor %}
+    </div>
+  </nav>
+  <nav class="fc-management" aria-label="Управление сервером">
+    <span class="fc-label fc-nav-label">Управление</span>
+    <div class="fc-management-links">
+      <a href="/control/backups"{% if request.path=='/control/backups' %} aria-current="page"{% endif %}>Резервные копии</a>
+      <a href="/control/migration"{% if request.path=='/control/migration' %} aria-current="page"{% endif %}>Перенос сервера</a>
+    </div>
+  </nav>
+</div>

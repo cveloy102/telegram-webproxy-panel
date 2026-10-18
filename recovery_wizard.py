@@ -61,6 +61,10 @@ def options_from_manifest(manifest,address):
         if host==options['domain'] or type(port) is not int or not 1024<=port<=65535:
             raise ValueError('Некорректный домен или UDP-порт Hysteria в архиве.')
         options.update(hy2_domain=host,hy2_port=port)
+    if manifest.get('amnezia'):
+        host=domain_name(manifest['amnezia_domain']);port=manifest['amnezia_port']
+        if type(port) is not int or not 1024<=port<=65535 or port==options.get('hy2_port'):raise ValueError('Некорректный UDP-порт AmneziaWG в архиве')
+        options.update(awg_domain=host,awg_port=port)
     # Validate redirect domains before any system configuration is installed.
     from restore import merge_redirects
     merge_redirects('',manifest.get('redirects',[]),options['domain'])
@@ -70,6 +74,7 @@ def options_from_manifest(manifest,address):
 def domains(data):
     values=[data['options']['domain']]
     if data['options'].get('hy2_domain'):values.append(data['options']['hy2_domain'])
+    if data['options'].get('awg_domain'):values.append(data['options']['awg_domain'])
     values.extend(item['host'] for item in data.get('redirects',[]))
     return list(dict.fromkeys(values))
 
@@ -125,6 +130,9 @@ def inspect_archive(archive,identity):
         users=json.loads((files/'telegram/users.json').read_text())
         import sqlite3
         counts={'telegram':len(users['users']),'hysteria':0}
+        counts['amnezia']=0
+        if (files/'amnezia/awg.sqlite3').exists():
+            with contextlib.closing(sqlite3.connect(files/'amnezia/awg.sqlite3')) as db:counts['amnezia']=db.execute('SELECT count(*) FROM users').fetchone()[0]
         database=files/'hysteria/hy2.sqlite3'
         if database.exists():
             with contextlib.closing(sqlite3.connect(database)) as db:
@@ -191,12 +199,13 @@ def enable_services(data,setup,root=ROOT):
     if state['phase']!='running' or state['busy']:
         print('\nПеред включением останови старую панель через «Перенос», либо выключи старый VPS у хостера.')
         print('Недоступность старого сайта сама по себе не доказывает, что он выключен.')
-        if setup.ask('Старый сервер выключен или его Telegram/Hysteria остановлены? да / нет','нет').lower() not in ('да','yes','y'):
+        if setup.ask('Старый сервер выключен или его Telegram/Hysteria/AmneziaWG остановлены? да / нет','нет').lower() not in ('да','yes','y'):
             print('Оставляю новый VPS в режиме ожидания. Повтори команду установки, когда будешь готов.');return False
         # Recheck after human confirmation: DNS may have changed while waiting.
         for domain in domains(data):
             setup.check_dns(domain,data['options']['ip'])
-            check_https(domain,panel=domain==data['options']['domain'])
+            if domain!=data['options'].get('awg_domain') or domain==data['options']['domain'] or domain==data['options'].get('hy2_domain'):
+                check_https(domain,panel=domain==data['options']['domain'])
         if not state['busy']:backup_api({'op':'migration_resume','confirm':data['options']['domain']})
         deadline=time.monotonic()+180
         while time.monotonic()<deadline:
@@ -208,6 +217,9 @@ def enable_services(data,setup,root=ROOT):
     setup.health(data['options']['domain'],public=False)
     if data['options'].get('hy2_domain'):
         from hy2_routes import helper
+        helper({'op':'migration_ready'})
+    if data['options'].get('awg_domain'):
+        from awg_routes import helper
         helper({'op':'migration_ready'})
     data['complete']=True;save(data,root)
     current=json.loads(setup.STATE.read_text());current['phase']='complete'
@@ -256,6 +268,7 @@ def run_wizard(source,revision,*,setup=None,root=ROOT):
             created=dt.datetime.fromtimestamp(manifest['created'],dt.timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
             print('Копия: '+created+'\nTelegram: '+options['domain']+' — профилей: '+str(counts['telegram']))
             if options.get('hy2_domain'):print('Hysteria: '+options['hy2_domain']+' / UDP '+str(options['hy2_port'])+' — профилей: '+str(counts['hysteria']))
+            if options.get('awg_domain'):print('AmneziaWG: '+options['awg_domain']+' / UDP '+str(options['awg_port'])+' — профилей: '+str(counts['amnezia']))
             print('Вернутся прежние пароль и 2FA владельца. Клиентские подключения останутся выключены до отдельного подтверждения.')
             if setup.ask('Восстановить эту копию на этом новом VPS? да / нет','нет').lower() not in ('да','yes','y'):return
             root=Path(root);root.mkdir(parents=True,exist_ok=True);root.chmod(0o700)
@@ -275,7 +288,7 @@ def run_wizard(source,revision,*,setup=None,root=ROOT):
             data['imported']=True;save(data,root);dashboard(data)
         print('\nТЕПЕРЬ ПЕРЕКЛЮЧИ DNS\nВ панели управления доменом замени старый IP в A-записях на '+data['options']['ip']+'. Имена доменов оставь прежними. Удали AAAA у этих имён; эта версия использует IPv4. В Cloudflare выбери DNS only (серое облако).')
         for domain in domains(data):print('  A  '+domain+' → '+data['options']['ip'])
-        print('Открой у хостера входящие TCP 80/443'+(' и UDP '+str(data['options']['hy2_port']) if data['options'].get('hy2_domain') else '')+'.')
+        print('Открой у хостера входящие TCP 80/443'+''.join(' и UDP '+str(data['options'][k]) for k in ('hy2_port','awg_port') if k in data['options'])+'.')
         print('Мастер дождётся обновления DNS и проверит HTTPS. Начинать установку заново не нужно.\nЕсли DNS уже переключён, проверка пройдёт автоматически. Кэши у клиентов могут обновиться позже.')
         # Never trust an old green checkpoint for an external, changeable condition.
         data['dns']=False;data['https']=False;save(data,root)
@@ -283,6 +296,7 @@ def run_wizard(source,revision,*,setup=None,root=ROOT):
             wait_check('DNS '+domain,lambda domain=domain:setup.check_dns(domain,data['options']['ip']))
         data['dns']=True;save(data,root)
         for domain in domains(data):
+            if domain==data['options'].get('awg_domain') and domain not in (data['options']['domain'],data['options'].get('hy2_domain')):continue
             wait_check('HTTPS '+domain,lambda domain=domain:check_https(domain,panel=domain==data['options']['domain']))
         data['https']=True;save(data,root);dashboard(data)
         if enable_services(data,setup,root):

@@ -24,7 +24,7 @@ import urllib.request
 
 from units import units, caddyfile, FIREWALL
 
-VERSION='0.4.0-beta.4'
+VERSION='0.5.0-beta.1'
 RELAY_COMMIT='c8adb8b7c6b7fc46c12ae3acb68be9070c26a8e8'
 RELAY_SHA256='a78b48f536180143dd7005785ca397310c36ee0b132e19949a45d64f586ab549'
 MTPROXY_COMMIT='f36d8af769ffaeac36978d38c2c0f6d1104c2137'
@@ -33,7 +33,7 @@ P=pathlib.Path
 BASE=P('/opt/relay-panel')
 STATE=P('/etc/relay-panel/install.json')
 LOG=P('/var/log/relay-panel-install.log')
-SERVICES=['relay-panel','relay-helper','tproxy-server','mtproxy','relay-refresh.timer']
+SERVICES=['relay-panel','relay-helper','tproxy-server','mtproxy','relay-refresh.timer','relay-awg','amneziawg-server','relay-hy2','hysteria-server','relay-backup']
 
 
 def open_install_lock():
@@ -147,20 +147,16 @@ def new_options():
         return value
     email=ask('Email для сертификата (например name@example.com; необязательно)','',valid_email)
     options.update(domain=domain,ip=address,email=email,phase='preparing')
-    if ask('Установить также Hysteria 2? да / нет','да',yes_no)=='да':
-        def hy2_host(value):
-            host=domain_name(value)
-            if host==domain:raise ValueError('Для Hysteria нужен другой поддомен, например hy2.example.com.')
-            return host
-        hy2_domain=ask('Отдельный домен Hysteria (например hy2.example.com, без https:// и пути)',validate=hy2_host)
-        check_dns(hy2_domain,address)
-        def valid_port(value):
-            if not value.isascii() or not value.isdecimal() or not 1024<=int(value)<=65535:
-                raise ValueError('Введи номер UDP-порта от 1024 до 65535 или нажми Enter для 24443.')
-            return int(value)
-        port=ask('UDP-порт Hysteria (число от 1024 до 65535)','24443',valid_port)
-        options.update(hy2_domain=hy2_domain,hy2_port=port)
+    optional_protocols(options)
     return options
+
+def optional_protocols(options):
+    """The same add-only dialogue for fresh installs and older panel versions."""
+    from hysteria_install import ask_options as hysteria_options
+    from amnezia_install import ask_options as amnezia_options
+    hysteria_options(sys.modules[__name__],options)
+    amnezia_options(sys.modules[__name__],options)
+
 
 def download(url,path,checksum=None):
     error=None
@@ -344,6 +340,8 @@ def install_files(source,options,work,candidate,mtproxy):
     from hysteria_install import install as install_hysteria,caddy as hy2_caddy
     install_backup(sys.modules[__name__])
     install_hysteria(sys.modules[__name__],options,work)
+    from amnezia_install import install as install_amnezia
+    install_amnezia(sys.modules[__name__],options,work)
     write('/etc/caddy/Caddyfile',caddyfile(options['domain'],options['email'])+(hy2_caddy(options['hy2_domain']) if options.get('hy2_domain') else ''))
     run('caddy','validate','--config','/etc/caddy/Caddyfile','--adapter','caddyfile')
     run('/usr/local/bin/tproxy-server','-config','/etc/tproxy-server/config.json','-profiles-file','/etc/tproxy-server/profiles.json','-check')
@@ -361,6 +359,8 @@ def activate(standby=False):
     run('systemctl','enable','--now','relay-backup')
     from hysteria_install import activate as activate_hysteria
     activate_hysteria(sys.modules[__name__],json.loads(STATE.read_text()),standby=standby)
+    from amnezia_install import activate as activate_amnezia
+    activate_amnezia(sys.modules[__name__],json.loads(STATE.read_text()),standby=standby)
 
 def health(domain,public=True):
     for _ in range(25):
@@ -412,7 +412,8 @@ def main():
         if choice=='1':
             health(existing['domain']);existing['phase']='complete';json_write(STATE,existing,mode=0o600);show_access();return
         if choice!='3':raise RuntimeError('Неизвестный пункт меню.')
-        options=existing
+        options=dict(existing)
+        optional_protocols(options)
     else:
         choice=ask('1 — новая установка, 2 — восстановить из резервной копии, 0 — выход','1')
         if choice=='0':return
@@ -425,7 +426,8 @@ def main():
     print('\nПрокси: '+options['domain']+'\nПанель: https://'+options['domain']+'/control/')
     print('Будут установлены MTProxy, релей, Caddy, панель и автозапуск. Настройка займёт несколько минут.')
     if ask('Начать? да / нет','нет',yes_no)!='да':print('Отменено.');return
-    directory('/etc/relay-panel',mode=0o700);json_write(STATE,options,mode=0o600)
+    directory('/etc/relay-panel',mode=0o700)
+    if not existing:json_write(STATE,options,mode=0o600)
     packages();users()
     with tempfile.TemporaryDirectory(prefix='relay-panel-build-',dir='/var/tmp') as folder:
         work=P(folder);candidate,mtproxy=build(args.source.resolve(),work)
@@ -437,6 +439,8 @@ def main():
             snapshot=backup(include_programs=True)
             print('Резервная копия: '+str(snapshot))
         try:
+            # The rollback archive must contain the previous protocol selection.
+            json_write(STATE,options,mode=0o600)
             install_files(args.source.resolve(),options,work,candidate,mtproxy)
             activate()
             health(options['domain'],public=False)

@@ -5,7 +5,7 @@
 #fsociety-preview .fc button{cursor:var(--cursor-interaction,pointer)}
 #fsociety-preview .fc button:focus-visible,#fsociety-preview .fc input:focus-visible,#fsociety-preview .fc select:focus-visible{outline:2px solid var(--fc-red);outline-offset:3px}
 #fsociety-preview .fc [hidden]{display:none!important}
-#fsociety-preview .fc-header{padding:24px 110px 20px 26px;display:flex;align-items:center;gap:16px;border-bottom:1px solid var(--fc-line)}
+#fsociety-preview .fc-header{padding:24px 110px 20px 26px;display:flex;flex-wrap:wrap;align-items:center;gap:16px;border-bottom:1px solid var(--fc-line)}
 #fsociety-preview .fc-logo{display:grid;grid-template-columns:repeat(3,7px);gap:3px;transform:rotate(-5deg);flex-shrink:0}
 #fsociety-preview .fc-logo b{height:7px;background:var(--fc-red)}
 #fsociety-preview .fc-logo b:nth-child(5){background:transparent}
@@ -108,3 +108,22 @@ body{margin:0;background:#101113}
 
 #fsociety-preview .hy-nav-link{color:inherit;align-self:center;text-decoration:none}
 #fsociety-preview .fc-header{flex-wrap:wrap}
+
+/* Shared protocol navigation stays in the same place on every panel page. */
+#fsociety-preview .fc-logout{margin-left:auto}
+#fsociety-preview .fc-navigation{display:flex;flex-wrap:wrap;gap:22px 32px;padding:22px 26px;background:var(--fc-panel);border-bottom:1px solid var(--fc-line)}
+#fsociety-preview .fc-protocols{flex:1 1 530px;min-width:0}
+#fsociety-preview .fc-nav-label{display:block;margin-bottom:10px}
+#fsociety-preview .fc-protocol-links{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+#fsociety-preview .fc-protocol{display:flex;flex-direction:column;gap:5px;min-height:68px;padding:12px 14px;border:1px solid var(--fc-line);color:var(--fc-ink);background:var(--fc-bg);text-decoration:none;box-sizing:border-box}
+#fsociety-preview .fc-protocol strong{font-size:15px;font-weight:600}
+#fsociety-preview .fc-protocol span{font-size:11px;color:var(--fc-dim)}
+#fsociety-preview .fc-protocol:hover{border-color:var(--fc-dim)}
+#fsociety-preview .fc-protocol[aria-current=page]{border-color:var(--fc-red);box-shadow:inset 0 3px var(--fc-red);background:#f44b5010}
+#fsociety-preview .fc-protocol[aria-current=page] strong{color:var(--fc-red)}
+#fsociety-preview .fc-management{flex:0 1 auto}
+#fsociety-preview .fc-management-links{display:flex;flex-wrap:wrap;gap:8px}
+#fsociety-preview .fc-management a{display:flex;align-items:center;min-height:44px;padding:10px 12px;border:1px solid var(--fc-line);color:var(--fc-dim);text-decoration:none;box-sizing:border-box;font-size:12px}
+#fsociety-preview .fc-management a:hover,#fsociety-preview .fc-management a[aria-current=page]{color:var(--fc-ink);border-color:var(--fc-ink)}
+#fsociety-preview .fc-navigation a:focus-visible{outline:2px solid var(--fc-red);outline-offset:3px}
+@media(max-width:720px){#fsociety-preview .fc-navigation{padding:18px 16px;gap:18px}#fsociety-preview .fc-protocol{padding:12px 8px;min-height:70px}#fsociety-preview .fc-protocol strong{font-size:13px}#fsociety-preview .fc-protocol span{font-size:10px}#fsociety-preview .fc-management{flex:1 1 100%}#fsociety-preview .fc-management a{flex:1;justify-content:center}}

@@ -20,6 +20,7 @@ def layout(prefix='relay',panel_dir=None):
       'users':Path('/etc/'+prefix+'-panel/users.json'),
       'owner':Path('/var/lib/'+prefix+'-panel'),
       'hy2':Path('/var/lib/'+prefix+'-hy2'),
+      'awg':Path('/var/lib/'+prefix+'-awg'),
       'usage':Path('/var/lib/tproxy-accounting/usage.json'),
       'site':Path(os.getenv('RELAY_BACKUP_SITE','/srv/relay-site')),
       'hy2config':Path('/etc/hysteria/config.yaml'),
@@ -43,6 +44,8 @@ def build_tar(output,paths,backup_dir=None):
         for logical,path in [('owner/panel.sqlite3',paths['owner']/'panel.sqlite3'),('hysteria/hy2.sqlite3',paths['hy2']/'hy2.sqlite3')]:
             if path.exists():
                 dest=temp/logical.replace('/','_');sqlite_snapshot(path,dest);files[logical]=dest
+        if paths.get('awg') and (paths['awg']/'awg.sqlite3').exists():
+            dest=temp/'awg.sqlite3';sqlite_snapshot(paths['awg']/'awg.sqlite3',dest);files['amnezia/awg.sqlite3']=dest
         for logical,folder in [('site',paths['site']),('hysteria/cover',paths['hy2cover'])]:
             if folder.exists():
                 for path in folder.rglob('*'):
@@ -63,6 +66,10 @@ def build_tar(output,paths,backup_dir=None):
             with contextlib.closing(sqlite3.connect(files['hysteria/hy2.sqlite3'])) as c:
                 settings={k:json.loads(v) for k,v in c.execute('SELECT k,v FROM settings WHERE k IN (?,?)',('host','port'))}
             metadata.update(hysteria=True,hysteria_domain=settings['host'],hysteria_port=settings['port'])
+        if 'amnezia/awg.sqlite3' in files:
+            with contextlib.closing(sqlite3.connect(files['amnezia/awg.sqlite3'])) as c:
+                settings={k:json.loads(v) for k,v in c.execute("SELECT k,v FROM settings WHERE k IN ('host','port')")}
+            metadata.update(amnezia=True,amnezia_domain=settings['host'],amnezia_port=settings['port'])
         total=0
         with tarfile.open(fileobj=output,mode='w|gz') as archive:
             for name,path in files.items():
@@ -96,7 +103,7 @@ def inspect_tar(path,destination):
         for item in archive:
             name=item.name
             if not item.isfile() or name.startswith('/') or '..' in Path(name).parts or '\\' in name or name in names:raise ValueError('Небезопасная структура архива.')
-            if name!='manifest.json' and name not in ('telegram/users.json','telegram/usage.json','owner/auth.json','owner/panel.sqlite3','hysteria/hy2.sqlite3','backup/config.json','backup/rclone.conf') and not name.startswith(('site/','hysteria/cover/')):raise ValueError('Неизвестный файл в архиве.')
+            if name!='manifest.json' and name not in ('telegram/users.json','telegram/usage.json','owner/auth.json','owner/panel.sqlite3','hysteria/hy2.sqlite3','amnezia/awg.sqlite3','backup/config.json','backup/rclone.conf') and not name.startswith(('site/','hysteria/cover/')):raise ValueError('Неизвестный файл в архиве.')
             names.add(name);total+=item.size
             if total>MAX_EXPANDED or len(names)>2000:raise ValueError('Архив превышает допустимый размер.')
             members.append(item)
@@ -110,7 +117,7 @@ def inspect_tar(path,destination):
                 expected=manifest['files'][item.name]
                 if expected.get('size')!=len(body) or expected.get('sha256')!=hashlib.sha256(body).hexdigest():raise ValueError('Проверка целостности копии не пройдена.')
             target=destination/item.name;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(body);target.chmod(0o600)
-    for name in ('owner/panel.sqlite3','hysteria/hy2.sqlite3'):
+    for name in ('owner/panel.sqlite3','hysteria/hy2.sqlite3','amnezia/awg.sqlite3'):
         p=destination/name
         if p.exists():
             with contextlib.closing(sqlite3.connect(f'file:{p}?mode=ro',uri=True)) as db:
@@ -118,8 +125,22 @@ def inspect_tar(path,destination):
     users=json.loads((destination/'telegram/users.json').read_text())
     if users.get('host')!=manifest.get('telegram_domain') or not isinstance(users.get('users'),list) or len(users['users'])>100:raise ValueError('Некорректные профили в копии.')
     for user in users['users']:
-        import re
         if not re.fullmatch(r'[0-9a-f]{32}',user.get('secret','')) or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',user.get('id','')) or type(user.get('enabled')) is not bool:raise ValueError('Некорректный ключ в копии.')
+    awg=destination/'amnezia/awg.sqlite3'
+    if bool(manifest.get('amnezia'))!=awg.exists():raise ValueError('Неполная копия AmneziaWG')
+    if awg.exists():
+        from awg_control import validate_settings,valid_key
+        with contextlib.closing(sqlite3.connect(awg)) as c:
+            c.row_factory=sqlite3.Row
+            settings={r['k']:json.loads(r['v']) for r in c.execute('SELECT * FROM settings')}
+            validate_settings(settings)
+            if settings['host']!=manifest.get('amnezia_domain') or settings['port']!=manifest.get('amnezia_port'):raise ValueError('Настройки AmneziaWG не совпадают с манифестом')
+            peers=c.execute('SELECT * FROM users').fetchall()
+            if len(peers)>100:raise ValueError('Слишком много пользователей AmneziaWG')
+            addresses=set();publics=set()
+            for u in peers:
+                if not re.fullmatch(r'u_[0-9a-f]{12}',u['id']) or not all(valid_key(u[k]) for k in ('private','public','psk')) or type(u['address']) is not int or not 2<=u['address']<=254 or u['address'] in addresses or u['public'] in publics:raise ValueError('Некорректный профиль AmneziaWG')
+                addresses.add(u['address']);publics.add(u['public'])
     return manifest
 
 def decrypt(ciphertext,identity,destination):

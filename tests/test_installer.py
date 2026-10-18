@@ -56,6 +56,23 @@ class Terminal:
         assert termios.tcgetattr(self.master)==self.initial,'Terminal settings were not restored'
 
 class InstallerTests(unittest.TestCase):
+    def test_optional_protocol_additions_cover_all_existing_combinations(self):
+        import installer
+        for has_hy2 in (False,True):
+            for has_awg in (False,True):
+                options={'domain':'tg.example.com','ip':'1.1.1.1','version':'0.3.0-beta.1'}
+                answers=[]
+                if has_hy2:options.update(hy2_domain='old-hy2.example.com',hy2_port=24443)
+                else:answers+=['да','hy2.example.com','24443']
+                if has_awg:options.update(awg_domain='old-awg.example.com',awg_port=51820)
+                else:answers+=['да','awg.example.com','51820']
+                before=dict(options)
+                with self.subTest(hysteria=has_hy2,amnezia=has_awg),patch('builtins.input',side_effect=answers) as user_input,patch.object(installer,'check_dns'),patch('socket.socket'),contextlib.redirect_stdout(io.StringIO()):
+                    installer.optional_protocols(options)
+                for k,v in before.items():self.assertEqual(options[k],v)
+                self.assertTrue(options['hy2_domain']);self.assertTrue(options['awg_domain'])
+                self.assertEqual(user_input.call_count,len(answers))
+
     @unittest.skipUnless(os.name=='posix','Unix installer entry point')
     def test_full_new_install_dialogue_can_cancel_without_changing_server(self):
         code='''
@@ -88,6 +105,7 @@ with tempfile.TemporaryDirectory() as folder:
             terminal.expect('нейтральная [Enter — 1]: ');terminal.send('\n')
             terminal.expect('необязательно) [Enter — пропустить]: ');terminal.send('\n')
             terminal.expect('Установить также Hysteria 2? да / нет [Enter — да]: ');terminal.send('нет\n')
+            terminal.expect('Установить также AmneziaWG 3.1? да / нет [Enter — нет]: ');terminal.send('\n')
             terminal.expect('Начать? да / нет [Enter — нет]: ');terminal.send('maybe\n')
             terminal.expect('Введи да или нет');terminal.expect('Начать? да / нет [Enter — нет]: ');terminal.send('\n')
             terminal.expect('CANCELLED_NO_CHANGES');terminal.finish()
@@ -132,7 +150,7 @@ with tempfile.TemporaryDirectory() as folder:
             terminal.expect(port_prompt)
             for invalid in ('abc','80','70000'):
                 terminal.send(invalid+'\n');terminal.expect('Введи номер UDP-порта');terminal.expect(port_prompt)
-            terminal.send('\n');terminal.expect('OPTIONS:');terminal.expect('\r\n');terminal.finish()
+            terminal.send('\n');terminal.expect('Установить также AmneziaWG 3.1? да / нет [Enter — нет]: ');terminal.send('\n');terminal.expect('OPTIONS:');terminal.expect('\r\n');terminal.finish()
             options=json.loads(terminal.output.split(b'OPTIONS:',1)[1].splitlines()[0])
         self.assertEqual(options['title'],'Свои люди')
         self.assertEqual(options['contact'],'example_user')
@@ -144,7 +162,7 @@ with tempfile.TemporaryDirectory() as folder:
 
     def test_optional_fields_can_be_skipped_and_hysteria_disabled(self):
         import installer
-        with patch('builtins.input',side_effect=['tg.example.com','','','','','','нет']),\
+        with patch('builtins.input',side_effect=['tg.example.com','','','','','','нет','нет']),\
              patch.object(installer,'public_ipv4',return_value='45.67.202.147'),\
              patch.object(installer,'check_dns'),contextlib.redirect_stdout(io.StringIO()):
             options=installer.new_options()

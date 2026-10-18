@@ -29,6 +29,7 @@ def merge_redirects(config,redirects,target):
 def restore_files(files,paths):
     """Only logical data files are copied, never programs or executable config."""
     mappings=[('telegram/users.json',paths['users'],'root','root',0o600),('telegram/usage.json',paths['usage'],'tproxy','relayadmin',0o640),('owner/auth.json',paths['owner']/'auth.json','relayadmin','relayadmin',0o600),('owner/panel.sqlite3',paths['owner']/'panel.sqlite3','relayadmin','relayadmin',0o600),('hysteria/hy2.sqlite3',paths['hy2']/'hy2.sqlite3','root','root',0o600)]
+    if paths.get('awg'):mappings.append(('amnezia/awg.sqlite3',paths['awg']/'awg.sqlite3','root','root',0o600))
     for name,target,user,group,mode in mappings:
         source=files/name
         if not source.exists():continue
@@ -58,16 +59,20 @@ def restore_main(argv=None, *, confirmed=False):
     with tempfile.TemporaryDirectory(prefix='relay-restore-',dir='/run') as tmp:
         temp=Path(tmp);manifest=decrypt(args.archive,args.identity.read_text(),temp)
         domain=domain_name(manifest['telegram_domain']);hy2=domain_name(manifest['hysteria_domain']) if manifest['hysteria'] else None
+        awg=domain_name(manifest['amnezia_domain']) if manifest.get('amnezia') else None
         redirects=manifest.get('redirects',[])
         caddy=Path('/etc/caddy/Caddyfile')
         restored_caddy=merge_redirects(caddy.read_text(),redirects,domain)
         print('Дата копии (Unix):',manifest['created']);print('Telegram:',domain);print('Hysteria:',hy2 or 'нет')
+        print('AmneziaWG:',awg or 'нет')
         if args.inspect:print('Копия расшифрована, манифест и базы проверены. Данные сервера не изменены.');return
         current=json.loads(Path('/etc/relay-panel/install.json').read_text())
         if current['domain']!=domain or hy2 and current.get('hy2_domain')!=hy2:raise ValueError('Установи панель с прежними доменами из копии. Новые IP допустимы, домены должны совпадать.')
+        if awg and current.get('awg_domain')!=awg:raise ValueError('Сначала установи AmneziaWG с прежним доменом из копии.')
+        if not awg and current.get('awg_domain'):raise ValueError('В этой копии нет AmneziaWG. Восстанавливай её в установку без AmneziaWG, чтобы не смешать пользователей.')
         if not confirmed and input('Будут заменены все ключи, история и вход владельца. Введи ВОССТАНОВИТЬ: ').strip()!='ВОССТАНОВИТЬ':print('Отменено.');return
         import manage
-        services=['relay-backup','relay-panel','relay-helper','relay-hy2','hysteria-server','tproxy-server','mtproxy']
+        services=['relay-backup','relay-panel','relay-helper','relay-hy2','hysteria-server','relay-awg','amneziawg-server','tproxy-server','mtproxy']
         subprocess.run(['systemctl','stop',*services],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         before=manage.backup(include_programs=True);print('Копия состояния до восстановления:',before)
         from backup_control import Controller as Backup
@@ -95,6 +100,11 @@ def restore_main(argv=None, *, confirmed=False):
                 controller.apply_settings(settings,start=False)
                 current['hy2_port']=settings['port']
                 Path('/etc/relay-panel/install.json').write_text(json.dumps(current))
+            if awg:
+                from awg_control import Controller as Amnezia
+                with Amnezia().db() as c:c.execute('DELETE FROM samples')
+                current.update(awg_domain=awg,awg_port=manifest['amnezia_port'])
+                Path('/etc/relay-panel/install.json').write_text(json.dumps(current))
             backup_source=temp/'files/backup';target=Path('/var/lib/relay-backup')
             target.mkdir(mode=0o700,exist_ok=True)
             for name in ('config.json','rclone.conf'):
@@ -109,6 +119,7 @@ def restore_main(argv=None, *, confirmed=False):
                 subprocess.run(['systemctl','restart','mtproxy','tproxy-server','relay-refresh.timer'],check=True)
             subprocess.run(['systemctl','restart','relay-helper','relay-panel','relay-backup'],check=True)
             if hy2 and not args.standby:subprocess.run(['systemctl','restart','relay-hy2','hysteria-server'],check=True)
+            if awg and not args.standby:subprocess.run(['systemctl','restart','amneziawg-server','relay-awg'],check=True)
             from installer import health
             if not args.standby:health(current['domain'],public=False)
             from backup_routes import helper as backup_ready
@@ -117,11 +128,17 @@ def restore_main(argv=None, *, confirmed=False):
                 try:
                     backup_ready({'op':'status'})
                     if hy2 and not args.standby:hy2_ready({'op':'status'});controller.stats_api('online')
+                    if awg and not args.standby:
+                        from awg_routes import helper as awg_ready
+                        awg_ready({'op':'migration_ready'})
                     break
                 except (OSError,ValueError):time.sleep(1)
             else:raise ValueError('Службы управления не стали готовы после восстановления.')
             if args.standby:print('Данные восстановлены в режиме ожидания. Проверь DNS, сертификаты и порты. Для включения: relay-panel migration resume')
-            else:print('Готово. Используй прежние пароль, 2FA и ключи. Проверь DNS обоих доменов и доступность UDP-порта',current.get('hy2_port','—'))
+            else:
+                print('Готово. Используй прежние пароль, 2FA и ключи. Проверь DNS всех доменов.')
+                for protocol,field in (('Hysteria','hy2_port'),('AmneziaWG','awg_port')):
+                    if field in current:print(protocol+': открой UDP '+str(current[field]))
         except Exception:
             if args.standby:
                 migration.standby()

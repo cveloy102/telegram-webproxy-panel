@@ -20,7 +20,7 @@ P=pathlib.Path
 DATA=P('/var/lib/relay-panel')
 ROOT=P('/etc/relay-panel')
 BACKUPS=P('/var/backups/relay-panel')
-NAMES=['relay-backup','relay-hy2','hysteria-server','relay-panel','relay-helper','tproxy-server','mtproxy','relay-refresh.timer']
+NAMES=['relay-awg','amneziawg-server','relay-backup','relay-hy2','hysteria-server','relay-panel','relay-helper','tproxy-server','mtproxy','relay-refresh.timer']
 
 def owner_exists():
     path=DATA/'panel.sqlite3'
@@ -49,15 +49,15 @@ def backup(include_programs=False):
     descriptor=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
     with tempfile.TemporaryDirectory(prefix='relay-backup-') as temp,os.fdopen(descriptor,'wb') as output,tarfile.open(fileobj=output,mode='w:gz') as archive:
         def no_database(item):
-            return None if item.name.endswith(('panel.sqlite3','panel.sqlite3-wal','panel.sqlite3-shm','panel.sqlite3-journal','hy2.sqlite3','hy2.sqlite3-wal','hy2.sqlite3-shm','hy2.sqlite3-journal')) else item
-        paths=['/etc/hysteria','/var/lib/hysteria','/var/lib/relay-hy2','/var/lib/relay-backup','/srv/relay-site','/etc/systemd/system/relay-backup.service','/etc/systemd/system/relay-hy2.service','/etc/systemd/system/hysteria-server.service','/usr/local/bin/hysteria','/etc/relay-panel','/etc/tproxy-server','/etc/mtproxy','/etc/caddy/Caddyfile','/var/lib/relay-panel','/var/lib/tproxy-accounting','/var/lib/caddy','/usr/local/sbin/relay-panel']
+            return None if P(item.name).name in ('awg.sqlite3','awg.sqlite3-wal','awg.sqlite3-shm','awg.sqlite3-journal') else (None if item.name.endswith(('panel.sqlite3','panel.sqlite3-wal','panel.sqlite3-shm','panel.sqlite3-journal','hy2.sqlite3','hy2.sqlite3-wal','hy2.sqlite3-shm','hy2.sqlite3-journal')) else item)
+        paths=['/var/lib/relay-awg','/etc/systemd/system/relay-awg.service','/etc/systemd/system/amneziawg-server.service','/etc/tmpfiles.d/relay-awg.conf','/etc/sysctl.d/80-relay-awg.conf','/usr/local/bin/awg','/usr/local/bin/amneziawg-go','/etc/hysteria','/var/lib/hysteria','/var/lib/relay-hy2','/var/lib/relay-backup','/srv/relay-site','/etc/systemd/system/relay-backup.service','/etc/systemd/system/relay-hy2.service','/etc/systemd/system/hysteria-server.service','/usr/local/bin/hysteria','/etc/relay-panel','/etc/tproxy-server','/etc/mtproxy','/etc/caddy/Caddyfile','/var/lib/relay-panel','/var/lib/tproxy-accounting','/var/lib/caddy','/usr/local/sbin/relay-panel']
         if include_programs:
             paths+=['/opt/relay-panel','/opt/MTProxy','/usr/local/bin/tproxy-server']
         from units import units
         paths += [str(P('/etc/systemd/system')/name) for name in units()]
         for source in paths:
             if P(source).exists():archive.add(source,arcname=source.lstrip('/'),filter=no_database)
-        for database in (DATA/'panel.sqlite3',P('/var/lib/relay-hy2/hy2.sqlite3')):
+        for database in (DATA/'panel.sqlite3',P('/var/lib/relay-hy2/hy2.sqlite3'),P('/var/lib/relay-awg/awg.sqlite3')):
             if database.exists():
                 target=P(temp)/database.name
                 with contextlib.closing(sqlite3.connect(f'file:{database}?mode=ro',uri=True)) as source,contextlib.closing(sqlite3.connect(target)) as destination:source.backup(destination)
@@ -76,9 +76,26 @@ def restore_internal(path):
     current=P('/opt/relay-panel/current')
     if current.is_symlink():current.unlink()
     with tarfile.open(path) as archive:
-        for item in archive.getmembers():
+        members=archive.getmembers()
+        for item in members:
             if item.name.startswith('/') or '..' in P(item.name).parts:raise RuntimeError('Небезопасный путь в резервной копии.')
-        archive.extractall('/')
+        binaries={'usr/local/bin/amneziawg-go','usr/local/bin/awg','usr/local/bin/hysteria','usr/local/bin/tproxy-server'}
+        ordinary=[]
+        for item in members:
+            if item.name not in binaries or not item.isfile():
+                ordinary.append(item);continue
+            # A different interface/client may still be using this executable.
+            # Rename gives the restored service a new inode without ETXTBSY.
+            target=P('/')/item.name
+            with tempfile.NamedTemporaryFile(dir=target.parent,prefix=target.name+'.restore-',delete=False) as output:
+                pending=P(output.name)
+                try:
+                    with archive.extractfile(item) as source:shutil.copyfileobj(source,output)
+                    output.flush();os.fsync(output.fileno())
+                    pending.chmod(item.mode & 0o777);os.chown(pending,item.uid,item.gid)
+                    pending.replace(target)
+                finally:pending.unlink(missing_ok=True)
+        archive.extractall('/',members=ordinary)
     subprocess.run(['systemctl','daemon-reload'],check=True)
     subprocess.run(['systemctl','reset-failed','mtproxy','tproxy-server','relay-helper','relay-panel'],check=True)
     sys.path.insert(0,str(P(__file__).parent/'panel'))
@@ -86,10 +103,42 @@ def restore_internal(path):
     names=['relay-helper','relay-panel','caddy']
     if not blocked():names+=['mtproxy','tproxy-server','relay-refresh.timer']
     subprocess.run(['systemctl','restart',*names],check=True)
-    optional=[name for name in (('relay-backup',) if blocked() else ('relay-backup','relay-hy2','hysteria-server')) if P('/etc/systemd/system/'+name+'.service').exists()]
+    state=json.loads((ROOT/'install.json').read_text())
+    selected=['relay-backup']
+    if not blocked() and state.get('hy2_domain'):selected+=['relay-hy2','hysteria-server']
+    if not blocked() and state.get('awg_domain'):selected+=['amneziawg-server','relay-awg']
+    for field,services,paths in (
+        ('hy2_domain',('relay-hy2','hysteria-server'),('/var/lib/relay-hy2','/etc/hysteria','/var/lib/hysteria')),
+        ('awg_domain',('relay-awg','amneziawg-server'),('/var/lib/relay-awg',))):
+        if state.get(field):continue
+        subprocess.run(['systemctl','disable',*services],capture_output=True)
+        for name in services:P('/etc/systemd/system/'+name+'.service').unlink(missing_ok=True)
+        if field=='awg_domain':
+            previous=P('/var/lib/relay-awg/previous-forwarding')
+            if previous.exists() and previous.read_text().strip() in ('0','1'):
+                subprocess.run(['sysctl','-w','net.ipv4.ip_forward='+previous.read_text().strip()],check=True,capture_output=True)
+            for name in ('/etc/sysctl.d/80-relay-awg.conf','/etc/tmpfiles.d/relay-awg.conf'):P(name).unlink(missing_ok=True)
+        # Retain failed-addition secrets privately, outside the portable backup
+        # inventory. Neither reboot nor later recovery may re-enable that protocol.
+        present=[P(path) for path in paths if P(path).exists()]
+        if present:
+            quarantine=BACKUPS/('incomplete-'+field+'-'+secrets.token_hex(6));quarantine.mkdir(mode=0o700)
+            for index,path in enumerate(present):shutil.move(str(path),str(quarantine/(str(index)+'-'+path.name)))
+    subprocess.run(['systemctl','daemon-reload'],check=True)
+    optional=[name for name in selected if P('/etc/systemd/system/'+name+'.service').exists()]
     if optional:
         subprocess.run(['systemctl','reset-failed',*optional],check=True)
         subprocess.run(['systemctl','restart',*optional],check=True)
+    # Type=simple reports started before the control socket and tunnel are ready.
+    # Finish rollback only after the restored protocols actually accept requests.
+    if not blocked():
+        for field,module in (('awg_domain','awg_routes'),('hy2_domain','hy2_routes')):
+            if not state.get(field):continue
+            helper=__import__(module,fromlist=['helper']).helper
+            for attempt in range(60):
+                try:helper({'op':'migration_ready'});break
+                except (OSError,ValueError):time.sleep(1)
+            else:raise RuntimeError('После отката не готов протокол: '+field)
 
 def refresh():
     sys.path.insert(0,str(P(__file__).parent/'panel'))
