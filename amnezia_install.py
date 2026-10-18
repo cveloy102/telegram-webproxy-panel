@@ -38,12 +38,9 @@ def ask_options(setup,options):
         if not value.isascii() or not value.isdecimal() or not 1024<=int(value)<=65535:raise ValueError('UDP-порт: от 1024 до 65535')
         value=int(value)
         if value==options.get('hy2_port'):raise ValueError('Порт уже выбран для Hysteria')
+        setup.check_udp_port(value)
         return value
     number=setup.ask('UDP-порт AmneziaWG','51820',port)
-    import socket
-    with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as probe:
-        try:probe.bind(('0.0.0.0',number))
-        except OSError:raise ValueError('UDP-порт уже занят') from None
     options.update(awg_domain=host,awg_port=number)
 
 

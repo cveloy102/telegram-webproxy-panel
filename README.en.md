@@ -12,7 +12,7 @@ The **Перенос** (Migration) page creates a verified final encrypted backu
 
 Self-hosted Telegram WEB proxy with an interactive installer and a private browser control panel. Designed for a small circle of family and friends.
 
-**Beta. Requires a Telegram client that supports the WEB proxy type.** This is not an MTProto/SOCKS5 configuration and is not an official Telegram product. It uses the official proof-of-concept [tproxy-server](https://github.com/telegramdesktop/tproxy-server). Connectivity depends on the client and network.
+**Release 0.5.0. Requires a Telegram client that supports the WEB proxy type.** This is not an MTProto/SOCKS5 configuration and is not an official Telegram product. It uses the official proof-of-concept [tproxy-server](https://github.com/telegramdesktop/tproxy-server). Connectivity depends on the client and network.
 
 ## Install
 

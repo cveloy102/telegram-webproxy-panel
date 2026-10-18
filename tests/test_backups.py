@@ -47,6 +47,21 @@ class Backups(unittest.TestCase):
                 item=tarfile.TarInfo(name);item.type=kind;item.linkname='/etc/passwd';f.addfile(item)
             with self.assertRaises(ValueError):inspect_tar(target,self.root/'bad')
         self.assertFalse((self.root/'escape').exists())
+
+    def test_malformed_manifest_and_missing_protocol_data_are_rejected(self):
+        target=self.root/'original.tar.gz'
+        with target.open('wb') as output:build_tar(output,self.paths)
+        with tarfile.open(target) as source:payload={m.name:source.extractfile(m).read() for m in source}
+        original=json.loads(payload['manifest.json'])
+        malformed=[[],{**original,'hysteria':False},{**original,'hysteria':'yes'},
+                   {**original,'files':{**original['files'],'telegram/users.json':'bad'}}]
+        for index,manifest in enumerate(malformed):
+            broken=self.root/f'malformed-{index}.tar.gz'
+            with tarfile.open(broken,'w:gz') as archive:
+                for name,body in payload.items():
+                    if name=='manifest.json':body=json.dumps(manifest).encode()
+                    item=tarfile.TarInfo(name);item.size=len(body);archive.addfile(item,io.BytesIO(body))
+            with self.subTest(index=index),self.assertRaises(ValueError):inspect_tar(broken,self.root/f'extracted-{index}')
     def test_signature_ignores_traffic_but_detects_secret_and_delete(self):
         control=Controller(self.root/'backup',self.paths);a=control.signature()
         with sqlite3.connect(self.paths['hy2']/'hy2.sqlite3') as c:c.execute('UPDATE users SET up=42,down=50,last=99')

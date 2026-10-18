@@ -127,7 +127,7 @@ with tempfile.TemporaryDirectory() as folder:
 
     @unittest.skipUnless(os.name=='posix','Unix terminal input')
     def test_complete_options_dialogue_defaults_formats_and_retry(self):
-        code='import installer,json; installer.public_ipv4=lambda:"45.67.202.147"; installer.check_dns=lambda *args:None; print("OPTIONS:"+json.dumps(installer.new_options(),ensure_ascii=False))'
+        code='import installer,json; installer.public_ipv4=lambda:"45.67.202.147"; installer.check_dns=lambda *args:None; installer.check_udp_port=lambda *args:None; print("OPTIONS:"+json.dumps(installer.new_options(),ensure_ascii=False))'
         with Terminal(code,raw=True) as terminal:
             terminal.expect('без https:// и пути): ');terminal.send('tg.hl100.ru\n')
             terminal.expect('Публичный IPv4 этого VPS [Enter — 45.67.202.147]: ');terminal.send('\n')

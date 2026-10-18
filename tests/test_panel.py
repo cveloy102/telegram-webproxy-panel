@@ -23,6 +23,33 @@ import app as panel
 from helper import Controller, atomic
 
 class PanelTests(unittest.TestCase):
+    def test_all_api_posts_reject_non_object_payload_without_server_errors(self):
+        from unittest.mock import patch
+        self.setup_owner();url='https://proxy.example.com'
+        page=self.client.get('/control/',base_url=url)
+        token=re.search(r'name="csrf" content="([^"]+)"',page.text).group(1)
+        headers={'Origin':url,'X-CSRF-Token':token}
+        paths=('action','key','settings','ack','hy2/action','hy2/key','awg/action','awg/key','backup/action','migration/action')
+        with patch.object(panel,'helper') as helper:
+            for path in paths:
+                for body in ('[]','[1]','null','42','true','"text"','{broken'):
+                    with self.subTest(path=path,body=body):
+                        response=self.client.post('/control/api/'+path,base_url=url,headers=headers,data=body,content_type='application/json')
+                        self.assertEqual(response.status_code,400)
+                        self.assertEqual(response.headers['Cache-Control'],'no-store')
+            helper.assert_not_called()
+
+    def test_all_protocol_and_management_pages_require_owner_and_protect_api(self):
+        url='https://proxy.example.com'
+        for name in ('hysteria','amnezia','backups','migration'):
+            self.assertEqual(self.client.get('/control/'+name,base_url=url).status_code,302)
+        for name in ('state','hy2/state','awg/state','backup/state','migration/state'):
+            self.assertEqual(self.client.get('/control/api/'+name,base_url=url).status_code,401)
+        self.setup_owner()
+        for name in ('action','key','settings','ack','hy2/action','hy2/key','awg/action','awg/key','backup/action','migration/action'):
+            for origin in ('https://evil.example',None):
+                self.assertEqual(self.client.post('/control/api/'+name,base_url=url,json={},headers={'Origin':origin} if origin else {}).status_code,403)
+
     def test_shared_navigation_highlights_current_protocol_or_management_page(self):
         self.setup_owner()
         for path in ('/control/','/control/hysteria','/control/amnezia','/control/backups','/control/migration'):

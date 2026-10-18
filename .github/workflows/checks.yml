@@ -9,6 +9,23 @@ concurrency:
   group: checks-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 jobs:
+  fresh:
+    name: Fresh install (${{ matrix.protocols }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        protocols: [none, hysteria, amnezia, both]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Actual fresh installation and initial menus
+        run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_fresh_entry.py ${{ matrix.protocols }}
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          sudo tail -n 100 /var/log/relay-panel-install.log || true
+          sudo journalctl --no-pager -n 60 -u relay-panel -u amneziawg-server -u relay-awg -u relay-hy2 -u hysteria-server || true
   tests:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
@@ -26,6 +43,7 @@ jobs:
           node --check panel/static/hysteria.js
           node --check panel/static/amnezia.js
           node tests/test_awg_ui.js
+          node tests/test_backup_key.js
           node --check panel/static/backups.js
           node --check panel/static/migration.js
       - name: Upgrade pinned pre-AWG release and preserve its existing users
