@@ -102,6 +102,18 @@ with tempfile.TemporaryDirectory(prefix='relay-awg-smoke-',dir='/var/tmp') as fo
         ns('awg-ci-client','ip','route','add','10.77.0.1/32','dev','awg-ci')
         result=subprocess.run(['ip','netns','exec','awg-ci-client','ping','-c','1','-W','1','10.77.0.1'],capture_output=True)
         assert result.returncode!=0,'VPN client reached the server management network'
+        # The public HTTPS panel must remain reachable from the VPN itself.
+        # Use the test Caddy CA; never disable certificate validation.
+        roots=list(Path('/var/lib/caddy').rglob('root.crt'));assert roots,'Missing test CA'
+        ns('awg-ci-client','curl','--fail','--silent','--show-error','--noproxy','*','--max-time','5',
+           '--cacert',str(roots[0]),'--resolve',options['domain']+':443:198.18.77.1',
+           'https://'+options['domain']+'/control/')
+        # A real listening management port must still be inaccessible, including
+        # when addressed using the same public IP that serves the panel.
+        for host,port in [('198.18.77.1',8082),('198.18.77.1',22),('10.77.0.1',443)]:
+            result=subprocess.run(['ip','netns','exec','awg-ci-client','curl','--silent','--noproxy','*',
+                '--max-time','1','http://'+host+':'+str(port)+'/'],capture_output=True)
+            assert result.returncode!=0,'VPN client reached management endpoint '+host+':'+str(port)
         # Unchanged peers retain their configuration across service restarts.
         run('systemctl','restart','amneziawg-server','relay-awg');wait_ready();curl()
         assert helper({'op':'key','id':uid})['conf']==original[uid]
