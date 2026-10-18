@@ -48,6 +48,7 @@ class EntryMenus(unittest.TestCase):
         self.folder=Path(self.stack.enter_context(tempfile.TemporaryDirectory()))
         self.state=self.folder/'install.json'
         self.stack.enter_context(patch.object(setup,'STATE',self.state))
+        self.stack.enter_context(patch.object(setup,'json_write',side_effect=lambda path,value,**kwargs:Path(path).write_text(json.dumps(value))))
         self.stack.enter_context(patch.object(setup,'preflight'))
         self.stack.enter_context(patch('recovery_wizard.pending',return_value=False))
         self.wizard=self.stack.enter_context(patch('recovery_wizard.run_wizard'))
