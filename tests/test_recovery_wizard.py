@@ -94,9 +94,26 @@ class RecoveryWizardTests(unittest.TestCase):
     def test_https_never_disables_certificate_validation(self):
         response=Mock(status=200)
         context=Mock();context.__enter__=Mock(return_value=response);context.__exit__=Mock(return_value=False)
-        with patch.object(wizard.urllib.request,'urlopen',return_value=context) as fetch:
+        with patch.object(wizard.urllib.request,'build_opener') as build:
+            fetch=build.return_value.open;fetch.return_value=context
             wizard.check_https('tg.example.com',panel=True)
         fetch.assert_called_once_with('https://tg.example.com/control/',timeout=8)
+        handler=build.call_args.args[0]
+        self.assertIsInstance(handler,wizard.urllib.request.HTTPRedirectHandler)
+        self.assertIsNone(handler.redirect_request(None,None,302,'Found',{},'https://tg.example.com/'))
+
+    def test_standby_redirect_is_ready_without_requesting_its_proxy_destination(self):
+        for code in (301,302,303,307,308):
+            with self.subTest(code=code),patch.object(wizard.urllib.request,'build_opener') as build:
+                build.return_value.open.side_effect=wizard.urllib.error.HTTPError('https://example.com/',code,'redirect',{'Location':'https://tg.example.com/'},None)
+                wizard.check_https('example.com')
+                build.return_value.open.assert_called_once_with('https://example.com/',timeout=8)
+
+    def test_panel_redirect_and_service_failure_remain_errors(self):
+        for panel,code in ((True,302),(True,503),(False,503),(False,404)):
+            with self.subTest(panel=panel,code=code),patch.object(wizard.urllib.request,'build_opener') as build:
+                build.return_value.open.side_effect=wizard.urllib.error.HTTPError('https://example.com/',code,'error',{},None)
+                with self.assertRaises(RuntimeError):wizard.check_https('example.com',panel=panel)
 
     def test_refusing_old_server_confirmation_does_not_start_services(self):
         setup=Mock();setup.ask.return_value='нет'

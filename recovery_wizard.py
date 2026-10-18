@@ -109,9 +109,17 @@ def wait_check(label,check,interval=10,sleep=time.sleep):
 
 def check_https(domain,panel=False):
     # Normal CA and hostname validation, with no insecure fallback.
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self,req,fp,code,msg,headers,newurl):return None
+    # A redirect site's destination can intentionally return 503 in standby.
+    # Verify the original site's TLS and response, without following it to the proxy.
+    opener=urllib.request.build_opener(NoRedirect())
     try:
-        with urllib.request.urlopen('https://'+domain+('/control/' if panel else '/'),timeout=8) as response:
+        with opener.open('https://'+domain+('/control/' if panel else '/'),timeout=8) as response:
             if response.status!=200:raise RuntimeError('HTTPS пока не готов. Проверь входящие TCP 80/443 у хостера.')
+    except urllib.error.HTTPError as error:
+        if not panel and error.code in (301,302,303,307,308):return
+        raise RuntimeError('HTTPS ответил кодом '+str(error.code)+'. Дождись готовности сайта и повтори проверку.') from None
     except OSError as error:
         raise RuntimeError('HTTPS или сертификат пока не готовы. Проверь DNS и входящие TCP 80/443 у хостера. '+str(error)) from None
 
