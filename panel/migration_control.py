@@ -7,6 +7,7 @@ import threading
 import time
 
 from migration_state import ROOT, boot_id
+from backend import health_url
 
 SERVICES = ('relay-refresh.timer', 'relay-refresh.service', 'relay-awg', 'amneziawg-server', 'hysteria-server',
             'relay-hy2', 'tproxy-server', 'mtproxy')
@@ -179,9 +180,10 @@ class Migration:
                     raise ValueError('Служба не запустилась: '+name)
         if previous.get('tproxy-server'):
             import urllib.request
+            state = json.loads(self.backup.paths['users'].read_text())
             for attempt in range(30):
                 try:
-                    with urllib.request.urlopen('http://127.0.0.1:8081/readyz',timeout=2) as response:
+                    with urllib.request.urlopen(health_url(state),timeout=2) as response:
                         if response.status==200:break
                 except OSError:pass
                 time.sleep(.3)

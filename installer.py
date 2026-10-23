@@ -23,6 +23,7 @@ import time
 import urllib.request
 
 from units import units, caddyfile, FIREWALL
+from panel.backend import active_users, health_url
 
 VERSION='0.5.0'
 RELAY_COMMIT='c8adb8b7c6b7fc46c12ae3acb68be9070c26a8e8'
@@ -268,7 +269,7 @@ def packages():
     print('Устанавливаю системные пакеты. Подробности: '+str(LOG))
     env={**os.environ,'DEBIAN_FRONTEND':'noninteractive'}
     run('apt-get','update',env=env)
-    run('apt-get','-o','Dpkg::Options::=--force-confold','install','-y','--no-install-recommends','ca-certificates','curl','build-essential','golang-go','libssl-dev','zlib1g-dev','nftables','iproute2','patch','caddy','python3-flask','python3-qrcode','python3-pil','gunicorn','python3-yaml','age','rclone',env=env)
+    run('apt-get','-o','Dpkg::Options::=--force-confold','install','-y','--no-install-recommends','ca-certificates','curl','build-essential','golang-go','libssl-dev','zlib1g-dev','nftables','kmod','iproute2','patch','caddy','python3-flask','python3-qrcode','python3-pil','gunicorn','python3-yaml','age','rclone',env=env)
 
 def users():
     import pwd
@@ -291,6 +292,19 @@ def build(source,work):
     run('/usr/bin/python3',str(source/'tests/test_panel.py'))
     return work/'tproxy-server',mtproxy
 
+def configure_conntrack():
+    # The module must exist before systemd-sysctl runs, including on cold boots.
+    directory('/etc/modules-load.d')
+    write('/etc/modules-load.d/relay-conntrack.conf','nf_conntrack\n')
+    run('modprobe','nf_conntrack')
+    current=int(subprocess.check_output(['sysctl','-n','net.netfilter.nf_conntrack_max'],text=True).strip())
+    limit=max(current,262144)
+    directory('/etc/sysctl.d')
+    path='/etc/sysctl.d/90-relay-conntrack.conf'
+    write(path,f'net.netfilter.nf_conntrack_max = {limit}\n')
+    run('sysctl','-p',path)
+
+
 def install_files(source,options,work,candidate,mtproxy):
     directory(BASE);directory(BASE/'releases')
     release=BASE/'releases'/(VERSION+'-'+str(int(time.time())))
@@ -312,17 +326,18 @@ def install_files(source,options,work,candidate,mtproxy):
         json_write('/var/lib/relay-panel/auth.json',{'host':options['domain'],'session_key':secrets.token_hex(32),'setup_hash':hashlib.sha256(code.encode()).hexdigest(),'setup_expires':int(time.time())+86400},mode=0o600,user='relayadmin',group='relayadmin')
         write('/etc/relay-panel/setup-code',code+'\n',mode=0o600)
     state=json.loads(P('/etc/relay-panel/users.json').read_text())
-    active=[u for u in state['users'] if u['enabled'] and not state['paused']]
+    active=active_users(state)
     profiles=[dict(name=u['id'],secret=u['secret'],backend='127.0.0.1:2398',carrier_mode='https') for u in active]
     if not profiles:profiles=[dict(name='suspended',secret=secrets.token_hex(16),backend='127.0.0.1:2398')]
     json_write('/etc/tproxy-server/profiles.json',{'profiles':profiles},mode=0o400,group='tproxy')
-    json_write('/etc/mtproxy/managed-secrets.json',{'secrets':[p['secret'] for p in profiles]},mode=0o640,group='mtproxy')
+    json_write('/etc/mtproxy/managed-secrets.json',{'secrets':[p['secret'] for p in profiles],'enabled':bool(active)},mode=0o640,group='mtproxy')
     key=P('/etc/tproxy-server/token.key')
     if not key.exists():
         key.write_bytes(secrets.token_bytes(32));shutil.chown(key,'tproxy','tproxy');key.chmod(0o400)
     elif len(key.read_bytes())!=32:raise RuntimeError('Повреждён ключ релея. Он не будет перезаписан.')
     json_write('/etc/tproxy-server/config.json',dict(public_hostname=options['domain'],base_path='',listen='127.0.0.1:8080',admin_listen='127.0.0.1:8081',public_dir='/srv/relay-site',static_routes='exact',profiles_file='/run/credentials/tproxy-server.service/profiles.json'),mode=0o640,group='tproxy')
     write('/etc/tproxy-server/firewall.nft',FIREWALL)
+    configure_conntrack()
     if not P('/srv/relay-site/index.html').exists():write('/srv/relay-site/index.html',render_site(options))
     for name,url in [('proxy-secret','https://core.telegram.org/getProxySecret'),('proxy-multi.conf','https://core.telegram.org/getProxyConfig')]:
         temp=work/name;download(url,temp)
@@ -376,9 +391,10 @@ def activate(standby=False):
     activate_amnezia(sys.modules[__name__],json.loads(STATE.read_text()),standby=standby)
 
 def health(domain,public=True):
+    state=json.loads((STATE.parent/'users.json').read_text())
     for _ in range(25):
         try:
-            with urllib.request.urlopen('http://127.0.0.1:8081/readyz',timeout=3) as result:assert result.status==200
+            with urllib.request.urlopen(health_url(state),timeout=3) as result:assert result.status==200
             request=urllib.request.Request('http://127.0.0.1:8082/control/',headers={'Host':domain})
             with urllib.request.urlopen(request,timeout=3) as result:assert result.status==200
             break

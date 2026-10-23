@@ -79,6 +79,17 @@ class MigrationTests(unittest.TestCase):
         self.assertTrue(self.active['mtproxy']);self.assertFalse(self.active['relay-refresh.timer'])
         self.assertFalse(migration_state.blocked())
 
+    def test_resume_checks_only_relay_health_when_web_profiles_are_suspended(self):
+        for state in ({'paused':True,'users':[{'enabled':True}]},
+                      {'paused':False,'users':[{'enabled':False}]}):
+            self.users.write_text(json.dumps({'host':'proxy.example.com',**state}))
+            self.stop()
+            response=Mock();response.__enter__=Mock(return_value=Mock(status=200));response.__exit__=Mock(return_value=False)
+            with patch('urllib.request.urlopen',return_value=response) as health:
+                self.control.work('resume',contextlib.nullcontext())
+            self.assertEqual(self.control.data['phase'],'running')
+            self.assertEqual(health.call_args.args[0],'http://127.0.0.1:8081/healthz')
+
     def test_partial_resume_failure_restops_services(self):
         self.stop()
         original=self.systemctl
