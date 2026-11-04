@@ -9,7 +9,7 @@ import time
 from migration_state import ROOT, boot_id
 
 SERVICES = ('relay-refresh.timer', 'relay-refresh.service', 'relay-awg', 'amneziawg-server', 'hysteria-server',
-            'relay-hy2', 'tproxy-server', 'mtproxy')
+            'relay-hy2', 'tproxy-server', 'mtproxy', 'relay-cascade')
 
 
 class Migration:
@@ -172,7 +172,7 @@ class Migration:
         previous = self.data['previous'] if 'previous' in self.data else self.inventory()
         self.root.joinpath('blocked').unlink(missing_ok=True)
         # State continues to reject mutations until all requested services start.
-        for name in ('mtproxy', 'tproxy-server', 'relay-hy2', 'hysteria-server', 'amneziawg-server', 'relay-awg', 'relay-refresh.timer'):
+        for name in ('relay-cascade', 'mtproxy', 'tproxy-server', 'relay-hy2', 'hysteria-server', 'amneziawg-server', 'relay-awg', 'relay-refresh.timer'):
             if previous.get(name):
                 self.systemctl('start', name)
                 if self.systemctl('is-active', name, check=False).returncode:

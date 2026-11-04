@@ -34,10 +34,10 @@ jobs:
       - name: Python and shell checks
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-flask python3-qrcode python3-pil python3-yaml age rclone shellcheck
+          sudo apt-get install -y python3-flask python3-qrcode python3-pil python3-yaml age rclone shellcheck wireguard-tools nftables iproute2 curl
           bash -n install.sh
           shellcheck install.sh
-          python3 -m compileall -q installer.py manage.py restore.py recovery_wizard.py units.py amnezia_install.py hysteria_install.py backup_install.py panel tests
+          python3 -m compileall -q installer.py cascade_install.py manage.py restore.py recovery_wizard.py units.py amnezia_install.py hysteria_install.py backup_install.py panel tests
           python3 -m unittest discover -s tests -v
           node --check panel/static/panel.js
           node --check panel/static/hysteria.js
@@ -49,6 +49,10 @@ jobs:
           node tests/test_backup_key.js
           node --check panel/static/backups.js
           node --check panel/static/migration.js
+          node --check panel/static/cascade.js
+          node tests/test_cascade_ui.js
+      - name: Isolated real cascade routing and outage protection
+        run: sudo /usr/bin/python3 tests/smoke_cascade.py
       - name: Upgrade pinned pre-AWG release and preserve its existing users
         run: sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 tests/smoke_legacy_upgrade.py
       - name: Roll back a failed addition of both missing protocols

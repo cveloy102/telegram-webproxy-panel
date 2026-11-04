@@ -169,12 +169,16 @@ def download(url,path,checksum=None):
     error=None
     for attempt in range(3):
         try:
-            request=urllib.request.Request(url,headers={'User-Agent':'RelayPanelInstaller/'+VERSION})
-            with urllib.request.urlopen(request,timeout=40) as response,open(path,'wb') as output:shutil.copyfileobj(response,output)
+            if url in ('https://core.telegram.org/getProxySecret','https://core.telegram.org/getProxyConfig'):
+                from panel.cascade_fetch import fetch_telegram
+                P(path).write_bytes(fetch_telegram(url))
+            else:
+                request=urllib.request.Request(url,headers={'User-Agent':'RelayPanelInstaller/'+VERSION})
+                with urllib.request.urlopen(request,timeout=40) as response,open(path,'wb') as output:shutil.copyfileobj(response,output)
             if checksum and hashlib.sha256(P(path).read_bytes()).hexdigest()!=checksum:
                 raise RuntimeError('Контрольная сумма исходников не совпала. Архив не будет запущен.')
             return
-        except (OSError,RuntimeError) as caught:
+        except (OSError,RuntimeError,subprocess.SubprocessError) as caught:
             error=caught
             if isinstance(caught,RuntimeError):break
             time.sleep(attempt+1)
@@ -259,6 +263,7 @@ def preflight(existing):
     total=int(re.search(r'MemTotal:\s+(\d+)',P('/proc/meminfo').read_text()).group(1))
     if total<900000:raise RuntimeError('Нужно минимум 1 ГБ RAM; рекомендуется 2 ГБ.')
     if not existing:
+        if P('/etc/relay-cascade/exit.json').exists():raise RuntimeError('Этот VPS уже настроен как выходной узел. Основная панель ставится на другой сервер.')
         for path in ('/etc/caddy/Caddyfile','/etc/tproxy-server','/etc/mtproxy','/opt/MTProxy','/var/lib/relay-panel'):
             if P(path).exists():raise RuntimeError('Найдена существующая конфигурация '+path+'. Установщик предназначен для чистого VPS и не будет её перезаписывать.')
         for port in (80,443,2398,8888,8080,8081,8082):
@@ -268,7 +273,7 @@ def packages():
     print('Устанавливаю системные пакеты. Подробности: '+str(LOG))
     env={**os.environ,'DEBIAN_FRONTEND':'noninteractive'}
     run('apt-get','update',env=env)
-    run('apt-get','-o','Dpkg::Options::=--force-confold','install','-y','--no-install-recommends','ca-certificates','curl','build-essential','golang-go','libssl-dev','zlib1g-dev','nftables','iproute2','patch','caddy','python3-flask','python3-qrcode','python3-pil','gunicorn','python3-yaml','age','rclone',env=env)
+    run('apt-get','-o','Dpkg::Options::=--force-confold','install','-y','--no-install-recommends','ca-certificates','curl','build-essential','golang-go','libssl-dev','zlib1g-dev','nftables','iproute2','wireguard-tools','patch','caddy','python3-flask','python3-qrcode','python3-pil','gunicorn','python3-yaml','age','rclone',env=env)
 
 def users():
     import pwd
@@ -292,6 +297,11 @@ def build(source,work):
     return work/'tproxy-server',mtproxy
 
 def install_files(source,options,work,candidate,mtproxy):
+    from cascade_install import install_entry
+    # A prepared tunnel can bootstrap Telegram config on a filtered RU network.
+    if P('/etc/relay-cascade/state.json').exists():
+        from cascade_control import Controller as Cascade
+        cascade=Cascade();cascade.apply(cascade.read())
     directory(BASE);directory(BASE/'releases')
     release=BASE/'releases'/(VERSION+'-'+str(int(time.time())))
     shutil.copytree(source,release,ignore=shutil.ignore_patterns('.git','__pycache__','*.pyc'))
@@ -355,6 +365,7 @@ def install_files(source,options,work,candidate,mtproxy):
     install_hysteria(sys.modules[__name__],options,work)
     from amnezia_install import install as install_amnezia
     install_amnezia(sys.modules[__name__],options,work)
+    install_entry(sys.modules[__name__])
     write('/etc/caddy/Caddyfile',caddyfile(options['domain'],options['email'])+(hy2_caddy(options['hy2_domain']) if options.get('hy2_domain') else ''))
     run('caddy','validate','--config','/etc/caddy/Caddyfile','--adapter','caddyfile')
     run('/usr/local/bin/tproxy-server','-config','/etc/tproxy-server/config.json','-profiles-file','/etc/tproxy-server/profiles.json','-check')
@@ -362,6 +373,8 @@ def install_files(source,options,work,candidate,mtproxy):
 
 def activate(standby=False):
     run('systemctl','daemon-reload')
+    run('systemctl','enable','relay-cascade')
+    run('systemctl','restart','relay-cascade')
     run('systemctl','enable','--now','tproxy-firewall')
     run('systemctl','enable','mtproxy','tproxy-server','relay-helper','relay-panel','relay-refresh.timer')
     run('systemctl','reset-failed','mtproxy','tproxy-server','relay-helper','relay-panel')
@@ -398,9 +411,18 @@ def main():
     parser=argparse.ArgumentParser(description='Telegram WEB Proxy + панель: интерактивная установка')
     parser.add_argument('--source',type=P,default=P(__file__).resolve().parent)
     parser.add_argument('--revision',default='local')
-    parser.add_argument('--recover',action='store_true',help='Открыть мастер восстановления из зашифрованной копии')
+    modes=parser.add_mutually_exclusive_group()
+    modes.add_argument('--recover',action='store_true',help='Открыть мастер восстановления из зашифрованной копии')
+    modes.add_argument('--exit-node',action='store_true',help='Установить только зарубежный выходной узел каскада')
+    modes.add_argument('--prepare-cascade',action='store_true',help='Подготовить туннель до установки, если Telegram недоступен из RU')
     args=parser.parse_args()
     os.umask(0o077)
+    if args.prepare_cascade:
+        from cascade_install import prepare_entry
+        prepare_entry(sys.modules[__name__]);return
+    if args.exit_node:
+        from cascade_install import install_exit
+        install_exit(sys.modules[__name__],args.source.resolve());return
     existing=json.loads(STATE.read_text()) if STATE.exists() else None
     from recovery_wizard import pending, run_wizard
     if args.recover or pending():
@@ -428,8 +450,12 @@ def main():
             options=dict(existing)
             optional_protocols(options)
         else:
-            choice=menu('1 — новая установка, 2 — восстановить из резервной копии, 0 — выход',('0','1','2'),'1')
+            choice=menu('1 — новая установка на RU / обычный сервер, 2 — восстановить из резервной копии, 3 — выходной узел каскада (зарубежный VPS), 0 — выход',('0','1','2','3'),'1')
             if choice=='0':return
+            if choice=='3':
+                guards.close()
+                from cascade_install import install_exit
+                install_exit(sys.modules[__name__],args.source.resolve());return
             if choice=='2':
                 guards.close()
                 run_wizard(args.source.resolve(),args.revision,setup=sys.modules[__name__]);return

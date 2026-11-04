@@ -21,6 +21,7 @@ def layout(prefix='relay',panel_dir=None):
       'owner':Path('/var/lib/'+prefix+'-panel'),
       'hy2':Path('/var/lib/'+prefix+'-hy2'),
       'awg':Path('/var/lib/'+prefix+'-awg'),
+      'cascade':Path('/etc/'+prefix+'-cascade'),
       'usage':Path('/var/lib/tproxy-accounting/usage.json'),
       'site':Path(os.getenv('RELAY_BACKUP_SITE','/srv/relay-site')),
       'hy2config':Path('/etc/hysteria/config.yaml'),
@@ -46,6 +47,12 @@ def build_tar(output,paths,backup_dir=None):
                 dest=temp/logical.replace('/','_');sqlite_snapshot(path,dest);files[logical]=dest
         if paths.get('awg') and (paths['awg']/'awg.sqlite3').exists():
             dest=temp/'awg.sqlite3';sqlite_snapshot(paths['awg']/'awg.sqlite3',dest);files['amnezia/awg.sqlite3']=dest
+        if paths.get('cascade'):
+            for name in ('state.json','private.key','public.key'):
+                path=paths['cascade']/name
+                if path.is_file():
+                    dest=temp/('cascade_'+name);dest.write_bytes(path.read_bytes());dest.chmod(0o600)
+                    files['cascade/'+name]=dest
         for logical,folder in [('site',paths['site']),('hysteria/cover',paths['hy2cover'])]:
             if folder.exists():
                 for path in folder.rglob('*'):
@@ -104,7 +111,7 @@ def inspect_tar(path,destination):
         for item in archive:
             name=item.name
             if not item.isfile() or name.startswith('/') or '..' in Path(name).parts or '\\' in name or name in names:raise ValueError('Небезопасная структура архива.')
-            if name!='manifest.json' and name not in ('telegram/users.json','telegram/usage.json','owner/auth.json','owner/panel.sqlite3','hysteria/hy2.sqlite3','amnezia/awg.sqlite3','backup/config.json','backup/rclone.conf') and not name.startswith(('site/','hysteria/cover/')):raise ValueError('Неизвестный файл в архиве.')
+            if name!='manifest.json' and name not in ('telegram/users.json','telegram/usage.json','owner/auth.json','owner/panel.sqlite3','hysteria/hy2.sqlite3','amnezia/awg.sqlite3','backup/config.json','backup/rclone.conf','cascade/state.json','cascade/private.key','cascade/public.key') and not name.startswith(('site/','hysteria/cover/')):raise ValueError('Неизвестный файл в архиве.')
             names.add(name);total+=item.size
             if total>MAX_EXPANDED or len(names)>2000:raise ValueError('Архив превышает допустимый размер.')
             members.append(item)

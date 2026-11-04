@@ -33,6 +33,23 @@ class Backups(unittest.TestCase):
             c.executescript('CREATE TABLE users(id,name,grp,secret,enabled,quota,expires,enforce,up,down,last); CREATE TABLE settings(k,v);')
             c.executemany('INSERT INTO settings VALUES(?,?)',[('host',json.dumps('hy2.example.com')),('port','24443'),('epoch','"test"')])
             c.execute('INSERT INTO users VALUES(?,?,?,?,?,?,?,?,?,?,?)',('friend','Friend','Friends','synthetic',1,0,0,0,1,2,0))
+    def test_portable_cascade_roundtrip_and_signature(self):
+        self.paths['cascade']=self.root/'cascade';self.paths['cascade'].mkdir()
+        state={'schema':1,'enabled':False}
+        for name,body in [('state.json',json.dumps(state)),('private.key','private-synthetic'),('public.key','public-synthetic')]:
+            (self.paths['cascade']/name).write_text(body)
+        controller=Controller(self.root/'backup',self.paths)
+        before=controller.signature()
+        (self.paths['cascade']/'state.json').write_text(json.dumps({'schema':1,'enabled':True}))
+        self.assertNotEqual(before,controller.signature())
+        (self.paths['cascade']/'state.json').write_text(json.dumps(state))
+        target=self.root/'cascade.tar.gz'
+        with target.open('wb') as output:build_tar(output,self.paths)
+        restored=self.root/'cascade-restored';manifest=inspect_tar(target,restored)
+        self.assertEqual((restored/'cascade/private.key').read_text(),'private-synthetic')
+        self.assertEqual(json.loads((restored/'cascade/state.json').read_text()),state)
+        self.assertNotIn('private-synthetic',json.dumps(manifest))
+
     def test_portable_roundtrip_both_databases(self):
         target=self.root/'copy.tar.gz'
         with target.open('wb') as f:build_tar(f,self.paths)

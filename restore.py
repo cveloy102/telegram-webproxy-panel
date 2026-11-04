@@ -28,12 +28,25 @@ def merge_redirects(config,redirects,target):
 
 def restore_files(files,paths):
     """Only logical data files are copied, never programs or executable config."""
+    cascade=files/'cascade'
+    if cascade.exists():
+        from cascade_network import validate_state,public_key,run
+        value=validate_state(json.loads((cascade/'state.json').read_text()))
+        if value.get('host'):
+            private=public_key((cascade/'private.key').read_text().strip())
+            public=public_key((cascade/'public.key').read_text().strip())
+            if run('wg','pubkey',input=private+'\n').stdout.strip()!=public:
+                raise ValueError('Ключи каскада в резервной копии не совпадают.')
     mappings=[('telegram/users.json',paths['users'],'root','root',0o600),('telegram/usage.json',paths['usage'],'tproxy','relayadmin',0o640),('owner/auth.json',paths['owner']/'auth.json','relayadmin','relayadmin',0o600),('owner/panel.sqlite3',paths['owner']/'panel.sqlite3','relayadmin','relayadmin',0o600),('hysteria/hy2.sqlite3',paths['hy2']/'hy2.sqlite3','root','root',0o600)]
     if paths.get('awg'):mappings.append(('amnezia/awg.sqlite3',paths['awg']/'awg.sqlite3','root','root',0o600))
+    if paths.get('cascade'):
+        for name in ('state.json','private.key','public.key'):
+            mappings.append(('cascade/'+name,paths['cascade']/name,'root','root',0o600))
     for name,target,user,group,mode in mappings:
         source=files/name
         if not source.exists():continue
         target.parent.mkdir(parents=True,exist_ok=True)
+        if name.startswith('cascade/'):target.parent.chmod(0o700)
         for suffix in ('-wal','-shm','-journal'):
             if target.name.endswith('.sqlite3'):Path(str(target)+suffix).unlink(missing_ok=True)
         pending=target.with_name(target.name+'.restore');shutil.copyfile(source,pending);shutil.chown(pending,user,group);pending.chmod(mode);pending.replace(target)
@@ -82,7 +95,7 @@ def restore_main(argv=None, *, confirmed=False):
         restored_caddy=merge_redirects(caddy.read_text(),redirects,domain)
         if not confirmed and input('Будут заменены все ключи, история и вход владельца. Введи ВОССТАНОВИТЬ: ').strip()!='ВОССТАНОВИТЬ':print('Отменено.');return
         import manage
-        services=['relay-backup','relay-panel','relay-helper','relay-hy2','hysteria-server','relay-awg','amneziawg-server','tproxy-server','mtproxy']
+        services=['relay-backup','relay-panel','relay-helper','relay-hy2','hysteria-server','relay-awg','amneziawg-server','tproxy-server','mtproxy','relay-cascade']
         subprocess.run(['systemctl','stop',*services],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         before=manage.backup(include_programs=True);print('Копия состояния до восстановления:',before)
         from backup_control import Controller as Backup
@@ -93,6 +106,8 @@ def restore_main(argv=None, *, confirmed=False):
             for name in ('relay-refresh.timer','relay-refresh.service'):
                 subprocess.run(['systemctl','stop',name],check=True,capture_output=True)
             paths=layout();restore_files(temp/'files',paths)
+            if (temp/'files/cascade/state.json').exists():
+                subprocess.run(['systemctl','restart','relay-cascade'],check=True)
             if redirects:
                 pending=caddy.with_suffix('.restore');pending.write_text(restored_caddy);pending.chmod(0o644)
                 try:

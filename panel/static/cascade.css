@@ -1,0 +1,10 @@
+#fsociety-preview #cascade-config,#fsociety-preview #cascade-pair{display:grid;gap:8px;max-width:780px;margin:24px 0}
+#fsociety-preview #cascade-config label,#fsociety-preview #cascade-pair label{color:var(--fc-dim)}
+#fsociety-preview .fc textarea{display:block;width:100%;min-height:100px;padding:12px;background:var(--fc-bg);border:1px solid var(--fc-line);color:var(--fc-ink);font:inherit;resize:vertical;overflow-wrap:anywhere}
+#fsociety-preview .fc textarea:focus-visible{outline:2px solid var(--fc-red);outline-offset:3px}
+#fsociety-preview .fc textarea[readonly]{color:var(--fc-dim)}
+#fsociety-preview #cascade-state{font-weight:600}
+#fsociety-preview #cascade-error,#fsociety-preview #cascade-health{color:var(--fc-red);overflow-wrap:anywhere}
+#fsociety-preview #cascade-message{color:var(--fc-green)}
+#fsociety-preview .fc-cascade-command{white-space:pre-wrap;overflow-wrap:anywhere;padding:12px;border:1px solid var(--fc-line);background:var(--fc-bg)}
+@media(max-width:720px){#fsociety-preview .fc textarea{font-size:16px}#fsociety-preview #cascade-config,#fsociety-preview #cascade-pair{max-width:100%}}

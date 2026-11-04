@@ -1,0 +1,205 @@
+"""Owned WireGuard interface and policy routes; never change the host default route."""
+import base64
+import ipaddress
+import json
+from pathlib import Path
+import subprocess
+
+INTERFACE = 'wg-cascade'
+NETWORK = '10.78.254.0/30'
+ENTRY = '10.78.254.1'
+EXIT = '10.78.254.2'
+TABLE = '20781'
+MARK = '0x20781'
+OUTER_MARK = '0x20782'
+PRIORITIES = ('10781', '10782')
+ROOT = Path('/etc/relay-cascade')
+PRIVATE = '0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/4, 240.0.0.0/4'
+
+
+def run(*args, **kwargs):
+    return subprocess.run(args, check=True, capture_output=True, text=True, timeout=20, **kwargs)
+
+
+def public_key(value):
+    try:
+        if not isinstance(value, str) or len(value) != 44: raise ValueError()
+        raw = base64.b64decode(value, validate=True)
+        if len(raw) != 32 or not any(raw) or base64.b64encode(raw).decode() != value: raise ValueError()
+    except (ValueError, TypeError):
+        raise ValueError('Некорректный публичный ключ WireGuard.') from None
+    return value
+
+
+def endpoint(value):
+    try:
+        address = ipaddress.IPv4Address(value)
+        if not address.is_global: raise ValueError()
+    except (ValueError, TypeError):
+        raise ValueError('Нужен публичный IPv4 выходного сервера.') from None
+    return str(address)
+
+
+def validate_state(value):
+    if not isinstance(value, dict) or value.get('schema') != 1 or type(value.get('enabled')) is not bool:
+        raise ValueError('Некорректное состояние каскада.')
+    if 'host' in value:
+        endpoint(value['host'])
+        if type(value.get('port')) is not int or not 1024 <= value['port'] <= 65535:
+            raise ValueError('Некорректный порт каскада.')
+        if not isinstance(value.get('name'), str) or not 1 <= len(value['name']) <= 60 or any(ord(c) < 32 for c in value['name']):
+            raise ValueError('Некорректное название каскада.')
+    if value.get('exit_public_key'):
+        public_key(value['exit_public_key'])
+        if 'host' not in value: raise ValueError('Отсутствует адрес выходного узла.')
+    if value['enabled'] and not value.get('exit_public_key'):
+        raise ValueError('У включённого каскада отсутствует выходной узел.')
+    return value
+
+
+def replace_table(name, body):
+    exists = subprocess.run(['nft', 'list', 'table', 'inet', name], capture_output=True).returncode == 0
+    script = (f'delete table inet {name}\n' if exists else '') + body
+    # Validation and replacement both use atomic nft transactions. No flush ruleset.
+    run('nft', '--check', '-f', '-', input=script)
+    run('nft', '-f', '-', input=script)
+
+
+def entry_firewall(uids, enabled):
+    if not enabled:
+        return f'''table inet relay_cascade {{
+ chain input_guard {{
+  type filter hook input priority -5; policy accept;
+  iifname "{INTERFACE}" ct state {{ established, related }} accept
+  iifname "{INTERFACE}" ip saddr {EXIT} icmp type echo-request accept
+  iifname "{INTERFACE}" drop
+ }}
+ chain forward_guard {{
+  type filter hook forward priority -5; policy accept;
+  iifname "{INTERFACE}" drop
+ }}
+}}
+'''
+    ids = ', '.join(str(int(uid)) for uid in uids)
+    return f'''table inet relay_cascade {{
+ chain mark_forward {{
+  type filter hook prerouting priority -150; policy accept;
+  iifname "awg-relay" meta nfproto ipv4 meta mark set {MARK}
+ }}
+ chain mark_output {{
+  type route hook output priority -150; policy accept;
+  meta mark {OUTER_MARK} return
+  ct direction reply return
+  oifname "lo" return
+  fib daddr type local return
+  meta skuid {{ {ids} }} meta nfproto ipv4 meta mark set {MARK}
+ }}
+ chain output_guard {{
+  type filter hook postrouting priority -5; policy accept;
+  meta mark {OUTER_MARK} return
+  ct direction reply return
+  oifname "lo" return
+  meta skuid {{ {ids} }} meta nfproto ipv6 drop
+  meta skuid {{ {ids} }} oifname != "{INTERFACE}" drop
+  oifname "{INTERFACE}" tcp flags & syn == syn tcp option maxseg size > 1240 tcp option maxseg size set 1240
+ }}
+ chain forward_guard {{
+  type filter hook forward priority -5; policy accept;
+  iifname "awg-relay" meta nfproto ipv6 drop
+  iifname "awg-relay" oifname != "{INTERFACE}" drop
+  iifname "{INTERFACE}" oifname != "awg-relay" drop
+  iifname "{INTERFACE}" ct state != {{ established, related }} drop
+ }}
+ chain input_guard {{
+  type filter hook input priority -5; policy accept;
+  iifname "{INTERFACE}" ct state {{ established, related }} accept
+  iifname "{INTERFACE}" ip saddr {EXIT} icmp type echo-request accept
+  iifname "{INTERFACE}" drop
+ }}
+ chain nat {{
+  type nat hook postrouting priority 90; policy accept;
+  oifname "{INTERFACE}" masquerade
+ }}
+}}
+'''
+
+
+def exit_firewall():
+    return f'''table inet relay_cascade_exit {{
+ chain input_guard {{
+  type filter hook input priority -5; policy accept;
+  iifname "{INTERFACE}" ct state {{ established, related }} accept
+  iifname "{INTERFACE}" ip saddr {ENTRY} ip daddr {EXIT} icmp type echo-request accept
+  iifname "{INTERFACE}" drop
+ }}
+ chain forward_guard {{
+  type filter hook forward priority -5; policy accept;
+  iifname "{INTERFACE}" ip saddr != {ENTRY} drop
+  iifname "{INTERFACE}" tcp flags & syn == syn tcp option maxseg size > 1240 tcp option maxseg size set 1240
+  oifname "{INTERFACE}" tcp flags & syn == syn tcp option maxseg size > 1240 tcp option maxseg size set 1240
+  iifname "{INTERFACE}" ip daddr {{ {PRIVATE} }} drop
+  iifname "{INTERFACE}" oifname "{INTERFACE}" drop
+  iifname "{INTERFACE}" meta nfproto ipv6 drop
+  oifname "{INTERFACE}" ct state != {{ established, related }} drop
+ }}
+ chain nat {{
+  type nat hook postrouting priority srcnat; policy accept;
+  ip saddr {ENTRY} oifname != "{INTERFACE}" masquerade
+ }}
+}}
+'''
+
+
+def preflight():
+    """Reject reserved network/table/rule ownership conflicts before touching anything."""
+    routes = json.loads(run('ip', '-j', '-4', 'route', 'show', 'table', 'all').stdout)
+    network = ipaddress.ip_network(NETWORK)
+    for route in routes:
+        dst = route.get('dst', 'default')
+        if dst != 'default' and route.get('dev') != INTERFACE and ipaddress.ip_network(dst, strict=False).overlaps(network):
+            raise ValueError('Подсеть каскада ' + NETWORK + ' уже используется.')
+    rules = json.loads(run('ip', '-j', '-4', 'rule', 'show').stdout)
+    if any(str(rule.get('priority')) in PRIORITIES for rule in rules):
+        raise ValueError('Приоритеты маршрутизации 10781/10782 уже заняты.')
+    if any(str(route.get('table')) == TABLE for route in routes):
+        raise ValueError('Таблица маршрутизации ' + TABLE + ' уже занята.')
+    if subprocess.run(['ip', 'link', 'show', 'dev', INTERFACE], capture_output=True).returncode == 0:
+        raise ValueError('Интерфейс wg-cascade уже занят.')
+    for name in ('relay_cascade', 'relay_cascade_exit'):
+        if subprocess.run(['nft', 'list', 'table', 'inet', name], capture_output=True).returncode == 0:
+            raise ValueError('Таблица firewall каскада уже существует: ' + name)
+
+
+def setup_interface(private_path, peer, entry=True, host=None, port=51821):
+    if subprocess.run(['ip', 'link', 'show', 'dev', INTERFACE], capture_output=True).returncode:
+        run('ip', 'link', 'add', 'dev', INTERFACE, 'type', 'wireguard')
+    command = ['wg', 'set', INTERFACE, 'fwmark', OUTER_MARK, 'private-key', str(private_path), 'peer', public_key(peer),
+               'allowed-ips', '0.0.0.0/0' if entry else ENTRY + '/32']
+    if entry: command += ['endpoint', endpoint(host) + ':' + str(port), 'persistent-keepalive', '25']
+    else: command[3:3] = ['listen-port', str(port)]
+    # wg set is incremental: remove a previous exit peer when re-pairing.
+    for previous in run('wg', 'show', INTERFACE, 'peers').stdout.split():
+        if previous != peer: run('wg', 'set', INTERFACE, 'peer', previous, 'remove')
+    run(*command)
+    run('ip', 'address', 'replace', (ENTRY if entry else EXIT) + '/30', 'dev', INTERFACE)
+    run('ip', 'link', 'set', 'dev', INTERFACE, 'mtu', '1280', 'up')
+    # Loose mode also works when the provider sets conf.all.rp_filter=1.
+    run('sysctl', '-w', 'net.ipv4.conf.' + INTERFACE + '.rp_filter=2')
+
+
+def policy_routes():
+    # A terminal route remains if the device disappears; lookup cannot fall back to RU.
+    run('ip', '-4', 'route', 'replace', 'prohibit', 'default', 'metric', '32760', 'table', TABLE)
+    run('ip', '-4', 'route', 'replace', 'default', 'dev', INTERFACE, 'metric', '10', 'table', TABLE)
+    rules = json.loads(run('ip', '-j', '-4', 'rule', 'show').stdout)
+    for priority, selector in ((PRIORITIES[0], ['fwmark', MARK]), (PRIORITIES[1], ['from', ENTRY + '/32'])):
+        if not any(str(rule.get('priority')) == priority for rule in rules):
+            run('ip', '-4', 'rule', 'add', 'priority', priority, *selector, 'lookup', TABLE)
+
+
+def remove_runtime():
+    # Called only on explicit disable, after removing the marking/guard transaction.
+    for priority in PRIORITIES:
+        subprocess.run(['ip', '-4', 'rule', 'del', 'priority', priority], capture_output=True)
+    subprocess.run(['ip', '-4', 'route', 'flush', 'table', TABLE], capture_output=True)
+    subprocess.run(['ip', 'link', 'delete', 'dev', INTERFACE], capture_output=True)

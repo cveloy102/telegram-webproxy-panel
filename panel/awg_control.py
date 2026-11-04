@@ -18,6 +18,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import unicodedata
 
 from migration_state import mutation
 
@@ -26,6 +27,22 @@ BINARY = '/usr/local/bin/awg'
 TZ = dt.timezone(dt.timedelta(hours=6))
 LOG = logging.getLogger('awg-controller')
 OBFS = ('S1','S2','S3','S4','H1','H2','H3','H4','HeaderProtectionKey')
+
+
+def profile_filename(name, fallback):
+    # awg-quick uses the filename as an interface name: ASCII, at most 15 chars.
+    name = str(name or '')
+    letters = dict(zip('абвгдеёжзийклмнопрстуфхцчшщъыьэюя',
+                       ('a','b','v','g','d','e','yo','zh','z','i','y','k','l','m','n','o','p','r','s','t','u','f','kh','ts','ch','sh','shch','','y','','e','yu','ya')))
+    translated = ''.join((letters[char.lower()].capitalize() if char.isupper() else letters[char.lower()])
+                         if char.lower() in letters else char for char in name)
+    if name.isupper(): translated = translated.upper()
+    ascii_name = unicodedata.normalize('NFKD', translated).encode('ascii', 'ignore').decode()
+    stem = re.sub(r'[^A-Za-z0-9_-]+', '-', ascii_name).strip('-_')[:15].rstrip('-_')
+    if not stem: stem = re.sub(r'[^A-Za-z0-9_-]', '', fallback)[:15] or 'AmneziaWG'
+    if re.fullmatch(r'CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9]', stem.upper()):
+        stem += '-VPN'
+    return stem + '.conf'
 
 
 def key():
@@ -196,7 +213,7 @@ class Controller:
             s=self.settings(c);u=c.execute('SELECT * FROM users WHERE id=?',(p.get('id'),)).fetchone()
             if op=='key':
                 if not u:raise ValueError('Ключ не найден')
-                return {'conf':self.config(u,s),'filename':u['id']+'.conf','enabled':self.allowed(u,s)}
+                return {'conf':self.config(u,s),'filename':profile_filename(u['name'],u['id']),'enabled':self.allowed(u,s)}
             if op not in ('create','toggle','rotate','limits','delete','global'):raise ValueError('Неизвестная операция')
             # Take a final sample before removing/resetting a peer and its counters.
             if not self.test:self.collect()

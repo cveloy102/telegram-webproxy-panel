@@ -93,6 +93,8 @@ from backup_routes import register as register_backups
 register_backups(app,authorized,csrf)
 from migration_routes import register as register_migration
 register_migration(app,authorized,csrf)
+from cascade_routes import register as register_cascade
+register_cascade(app,authorized,csrf)
 
 @app.context_processor
 def migration_context():
@@ -401,7 +403,7 @@ def api_ack():
 
 @app.get(PREFIX+'/static/<path:name>')
 def assets(name):
-    if name not in ('panel.css','panel.js','hysteria.css','hysteria.js','amnezia.js','backups.js','backups.css','migration.js'):
+    if name not in ('panel.css','panel.js','hysteria.css','hysteria.js','amnezia.js','backups.js','backups.css','migration.js','cascade.js','cascade.css'):
         abort(404)
     return app.send_static_file(name)
 

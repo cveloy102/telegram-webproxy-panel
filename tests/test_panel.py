@@ -23,13 +23,33 @@ import app as panel
 from helper import Controller, atomic
 
 class PanelTests(unittest.TestCase):
+    def test_cascade_owner_api_and_service_errors(self):
+        from unittest.mock import patch
+        self.setup_owner();url='https://proxy.example.com'
+        page=self.client.get('/control/cascade',base_url=url)
+        for asset in ('cascade.js','cascade.css'):
+            response=self.client.get('/control/static/'+asset,base_url=url)
+            self.assertEqual(response.status_code,200)
+            response.close()
+        token=re.search(r'name="csrf" content="([^"]+)"',page.text).group(1)
+        headers={'Origin':url,'X-CSRF-Token':token}
+        payload={'op':'configure','name':'Norway','host':'138.16.143.97','port':51821}
+        with patch('cascade_routes.helper',return_value={'enabled':False}) as helper:
+            result=self.client.post('/control/api/cascade/action',base_url=url,json=payload,headers=headers)
+            self.assertEqual(result.status_code,200);helper.assert_called_once_with(payload)
+        with patch('cascade_routes.helper',side_effect=ValueError('Проверка выхода не прошла')):
+            result=self.client.post('/control/api/cascade/action',base_url=url,json={'op':'enable'},headers=headers)
+            self.assertEqual(result.status_code,400);self.assertIn('Проверка',result.json['error'])
+        with patch('cascade_routes.helper',side_effect=OSError):
+            self.assertEqual(self.client.get('/control/api/cascade/state',base_url=url).status_code,503)
+
     def test_all_api_posts_reject_non_object_payload_without_server_errors(self):
         from unittest.mock import patch
         self.setup_owner();url='https://proxy.example.com'
         page=self.client.get('/control/',base_url=url)
         token=re.search(r'name="csrf" content="([^"]+)"',page.text).group(1)
         headers={'Origin':url,'X-CSRF-Token':token}
-        paths=('action','key','settings','ack','hy2/action','hy2/key','awg/action','awg/key','backup/action','migration/action')
+        paths=('action','key','settings','ack','hy2/action','hy2/key','awg/action','awg/key','backup/action','migration/action','cascade/action')
         with patch.object(panel,'helper') as helper:
             for path in paths:
                 for body in ('[]','[1]','null','42','true','"text"','{broken'):
@@ -41,18 +61,18 @@ class PanelTests(unittest.TestCase):
 
     def test_all_protocol_and_management_pages_require_owner_and_protect_api(self):
         url='https://proxy.example.com'
-        for name in ('hysteria','amnezia','backups','migration'):
+        for name in ('hysteria','amnezia','backups','migration','cascade'):
             self.assertEqual(self.client.get('/control/'+name,base_url=url).status_code,302)
-        for name in ('state','hy2/state','awg/state','backup/state','migration/state'):
+        for name in ('state','hy2/state','awg/state','backup/state','migration/state','cascade/state'):
             self.assertEqual(self.client.get('/control/api/'+name,base_url=url).status_code,401)
         self.setup_owner()
-        for name in ('action','key','settings','ack','hy2/action','hy2/key','awg/action','awg/key','backup/action','migration/action'):
+        for name in ('action','key','settings','ack','hy2/action','hy2/key','awg/action','awg/key','backup/action','migration/action','cascade/action'):
             for origin in ('https://evil.example',None):
                 self.assertEqual(self.client.post('/control/api/'+name,base_url=url,json={},headers={'Origin':origin} if origin else {}).status_code,403)
 
     def test_shared_navigation_highlights_current_protocol_or_management_page(self):
         self.setup_owner()
-        for path in ('/control/','/control/hysteria','/control/amnezia','/control/backups','/control/migration'):
+        for path in ('/control/','/control/hysteria','/control/amnezia','/control/backups','/control/migration','/control/cascade'):
             with self.subTest(path=path):
                 response=self.client.get(path,base_url='https://proxy.example.com')
                 self.assertEqual(response.status_code,200)

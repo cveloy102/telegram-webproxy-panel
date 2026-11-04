@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT));sys.path.insert(0,str(ROOT/'panel'))
-from awg_control import Controller
+from awg_control import Controller,profile_filename
 from backup_archive import build_tar,inspect_tar
 import recovery_wizard
 
@@ -24,6 +24,14 @@ def fake_public(private):return base64.b64encode(hashlib.sha256(private.encode()
 
 
 class AmneziaTests(unittest.TestCase):
+    def test_download_name_is_readable_and_safe_for_vpn_clients(self):
+        for name,expected in [('Павел телефон','Pavel-telefon.conf'),('Друг','Drug.conf'),('CON','CON-VPN.conf'),('café / PC','cafe-PC.conf')]:
+            with self.subTest(name=name):self.assertEqual(profile_filename(name,'u_123456789abc'),expected)
+        for name in ('Очень длинное имя пользователя','../\\:*?<>|','😀'):
+            result=profile_filename(name,'u_123456789abc')
+            self.assertRegex(result,r'^[A-Za-z0-9_-]{1,15}\.conf$')
+        self.assertEqual(self.c.call({'op':'key','id':self.uid})['filename'],'Drug.conf')
+
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup);self.root=Path(self.temp.name)
         env=patch.dict(os.environ,{'RELAY_BACKUP_TMP':str(self.root)});env.start();self.addCleanup(env.stop)
