@@ -93,6 +93,8 @@ from backup_routes import register as register_backups
 register_backups(app,authorized,csrf)
 from migration_routes import register as register_migration
 register_migration(app,authorized,csrf)
+from cascade_routes import register as register_cascade
+register_cascade(app,authorized,csrf)
 
 @app.context_processor
 def migration_context():

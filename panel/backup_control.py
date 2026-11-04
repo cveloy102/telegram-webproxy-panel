@@ -118,6 +118,10 @@ class Controller:
                 with self.lock:self.running=False
     def signature(self):
         parts=[]
+        if self.paths.get('cascade'):
+            for name in ('state.json','private.key','public.key'):
+                path=self.paths['cascade']/name
+                if path.exists():parts.append(path.read_bytes())
         if self.paths.get('awg') and (self.paths['awg']/'awg.sqlite3').exists():
             with contextlib.closing(sqlite3.connect(f"file:{self.paths['awg']/'awg.sqlite3'}?mode=ro",uri=True)) as c:
                 parts.append(repr(c.execute('SELECT * FROM settings ORDER BY k').fetchall()).encode())

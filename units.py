@@ -83,6 +83,7 @@ Requires=tproxy-firewall.service
 [Service]
 User=mtproxy
 Group=mtproxy
+LoadCredential=cascade.json:/etc/relay-cascade/state.json
 WorkingDirectory=/opt/MTProxy
 EnvironmentFile=/etc/mtproxy/mtproxy.env
 ExecStart=/usr/bin/python3 {CURRENT}/panel/backend.py

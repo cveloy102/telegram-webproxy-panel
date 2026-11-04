@@ -7,7 +7,7 @@ REF="${RELAY_PANEL_REF:-main}"
 [[ "$REF" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo 'Некорректная версия установщика.' >&2; exit 1; }
 
 if [[ "${1:-}" == '--help' ]]; then
-  echo 'Установка: bash install.sh. Восстановление: bash install.sh --recover. Нужны root, Ubuntu 24.04 amd64 и домен.'
+  echo 'Установка: bash install.sh. Восстановление: --recover. Выходной узел: --exit-node. Подготовить туннель до установки RU: --prepare-cascade. Нужны root и Ubuntu 24.04 amd64.'
   exit 0
 fi
 if (( EUID != 0 )); then

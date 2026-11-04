@@ -20,7 +20,7 @@ P=pathlib.Path
 DATA=P('/var/lib/relay-panel')
 ROOT=P('/etc/relay-panel')
 BACKUPS=P('/var/backups/relay-panel')
-NAMES=['relay-awg','amneziawg-server','relay-backup','relay-hy2','hysteria-server','relay-panel','relay-helper','tproxy-server','mtproxy','relay-refresh.timer']
+NAMES=['relay-awg','amneziawg-server','relay-backup','relay-hy2','hysteria-server','relay-panel','relay-helper','tproxy-server','mtproxy','relay-refresh.timer','relay-cascade']
 
 def owner_exists():
     path=DATA/'panel.sqlite3'
@@ -51,6 +51,8 @@ def backup(include_programs=False):
         def no_database(item):
             return None if P(item.name).name in ('awg.sqlite3','awg.sqlite3-wal','awg.sqlite3-shm','awg.sqlite3-journal') else (None if item.name.endswith(('panel.sqlite3','panel.sqlite3-wal','panel.sqlite3-shm','panel.sqlite3-journal','hy2.sqlite3','hy2.sqlite3-wal','hy2.sqlite3-shm','hy2.sqlite3-journal')) else item)
         paths=['/var/lib/relay-awg','/etc/systemd/system/relay-awg.service','/etc/systemd/system/amneziawg-server.service','/etc/tmpfiles.d/relay-awg.conf','/etc/sysctl.d/80-relay-awg.conf','/usr/local/bin/awg','/usr/local/bin/amneziawg-go','/etc/hysteria','/var/lib/hysteria','/var/lib/relay-hy2','/var/lib/relay-backup','/srv/relay-site','/etc/systemd/system/relay-backup.service','/etc/systemd/system/relay-hy2.service','/etc/systemd/system/hysteria-server.service','/usr/local/bin/hysteria','/etc/relay-panel','/etc/tproxy-server','/etc/mtproxy','/etc/caddy/Caddyfile','/var/lib/relay-panel','/var/lib/tproxy-accounting','/var/lib/caddy','/usr/local/sbin/relay-panel']
+        paths+=['/etc/relay-cascade','/etc/systemd/system/relay-cascade.service','/etc/sysctl.d/81-relay-cascade.conf']
+        paths += ['/etc/systemd/system/'+name+'.service.d/cascade.conf' for name in ('mtproxy','hysteria-server','amneziawg-server')]
         if include_programs:
             paths+=['/opt/relay-panel','/opt/MTProxy','/usr/local/bin/tproxy-server']
         from units import units
@@ -77,6 +79,14 @@ def restore_internal(path):
     if current.is_symlink():current.unlink()
     with tarfile.open(path) as archive:
         members=archive.getmembers()
+        had_cascade=any(item.name=='etc/relay-cascade/state.json' for item in members)
+        if not had_cascade:
+            # A pre-cascade rollback must not retain dependencies on new code.
+            subprocess.run(['systemctl','disable','--now','relay-cascade'],capture_output=True)
+            for name in ('mtproxy','hysteria-server','amneziawg-server'):
+                P('/etc/systemd/system/'+name+'.service.d/cascade.conf').unlink(missing_ok=True)
+            P('/etc/systemd/system/relay-cascade.service').unlink(missing_ok=True)
+            subprocess.run(['nft','delete','table','inet','relay_cascade'],capture_output=True)
         for item in members:
             if item.name.startswith('/') or '..' in P(item.name).parts:raise RuntimeError('Небезопасный путь в резервной копии.')
         binaries={'usr/local/bin/amneziawg-go','usr/local/bin/awg','usr/local/bin/hysteria','usr/local/bin/tproxy-server'}
@@ -101,6 +111,7 @@ def restore_internal(path):
     sys.path.insert(0,str(P(__file__).parent/'panel'))
     from migration_state import blocked
     names=['relay-helper','relay-panel','caddy']
+    if had_cascade:names.insert(0,'relay-cascade')
     if not blocked():names+=['mtproxy','tproxy-server','relay-refresh.timer']
     subprocess.run(['systemctl','restart',*names],check=True)
     state=json.loads((ROOT/'install.json').read_text())
@@ -150,7 +161,8 @@ def refresh_active():
     # Download once and replace only after format checks; preserve the last good config on failure.
     path=P('/etc/mtproxy/proxy-multi.conf');temp=path.with_name('proxy-multi.conf.new')
     try:
-        with urllib.request.urlopen('https://core.telegram.org/getProxyConfig',timeout=30) as response:content=response.read(1024*1024)
+        from panel.cascade_fetch import fetch_telegram
+        content=fetch_telegram('https://core.telegram.org/getProxyConfig')
         if len(content)<100 or b'default ' not in content or b'proxy_for ' not in content:raise RuntimeError('Неожиданный формат Telegram config.')
         if content==path.read_bytes():return
         temp.write_bytes(content);shutil.chown(temp,'root','mtproxy');temp.chmod(0o640);temp.replace(path)

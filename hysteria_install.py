@@ -111,6 +111,9 @@ def activate(setup,options,standby=False):
     # Write config before first startup, then let systemd retry ACME independently.
     import yaml
     cfg=yaml.safe_load(controller.config.read_text())
+    # Resolve client destinations in the Hysteria process, so DNS follows its egress policy.
+    cfg.setdefault('resolver',{'type':'udp','udp':{'addr':'1.1.1.1:53','timeout':'4s'}})
+    cfg.setdefault('outbounds',[{'name':'default','type':'direct','direct':{'mode':'4'}}])
     cfg.update(auth={'type':'http','http':{'url':'http://127.0.0.1:8083/auth/'+settings['auth_token']}},trafficStats={'listen':'127.0.0.1:9998','secret':settings['api_secret']})
     cfg.setdefault('masquerade',{'type':'file','file':{'dir':'/var/lib/hysteria/cover'}})
     pending=controller.config.with_suffix('.new')

@@ -10,6 +10,7 @@
   <nav class="fc-management" aria-label="Управление сервером">
     <span class="fc-label fc-nav-label">Управление</span>
     <div class="fc-management-links">
+      <a href="/control/cascade"{% if request.path=='/control/cascade' %} aria-current="page"{% endif %}>Каскад</a>
       <a href="/control/backups"{% if request.path=='/control/backups' %} aria-current="page"{% endif %}>Резервные копии</a>
       <a href="/control/migration"{% if request.path=='/control/migration' %} aria-current="page"{% endif %}>Перенос сервера</a>
     </div>

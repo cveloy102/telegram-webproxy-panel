@@ -1,0 +1,30 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
+const nodes=new Map();
+function node(id){if(!nodes.has(id))nodes.set(id,{value:'',textContent:'',content:'csrf',disabled:false,elements:[],addEventListener(){}});return nodes.get(id);}
+node('cascade-config').elements=[node('cascade-name'),node('cascade-host'),node('cascade-port')];
+node('cascade-pair').elements=[node('cascade-reply')];
+const buttons=['cascade-test','cascade-enable','cascade-disable'].map(node);
+let unavailable=false,state={enabled:false,configured:true,name:'Norway',host:'138.16.143.97',port:51821,pairing:{schema:1,ru_public_key:'public'},handshake:0};
+const context=vm.createContext({document:{getElementById:node,querySelector:()=>node('csrf'),querySelectorAll:()=>buttons},console,Date,confirm:()=>true,setInterval(){},fetch:async()=>{if(unavailable)throw Error('unavailable');return {ok:true,json:async()=>state};}});
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../panel/static/cascade.js'),'utf8'),context);
+(async()=>{
+  await vm.runInContext('refresh()',context);
+  assert.equal(node('cascade-enable').disabled,false);
+  assert.equal(node('cascade-disable').disabled,true);
+  node('cascade-host').value='editing.example';node('cascade-reply').value='unfinished reply';
+  await vm.runInContext('refresh()',context);
+  assert.equal(node('cascade-host').value,'editing.example');
+  assert.equal(node('cascade-reply').value,'unfinished reply');
+  node('cascade-error').textContent='Previous operation failed';
+  state={...state,enabled:true};await vm.runInContext('refresh()',context);
+  assert.equal(node('cascade-host').disabled,true);
+  assert.equal(node('cascade-reply').disabled,true);
+  assert.equal(node('cascade-enable').disabled,true);
+  assert.equal(node('cascade-disable').disabled,false);
+  assert.equal(node('cascade-error').textContent,'Previous operation failed');
+  unavailable=true;await vm.runInContext('refresh()',context);
+  for(const button of buttons)assert.equal(button.disabled,true);
+  assert.match(node('cascade-error').textContent,/unavailable/);
+  console.log('PASS: cascade state locks, preserved edits/errors and unavailable-service protection');
+})().catch(error=>{console.error(error);process.exitCode=1;});

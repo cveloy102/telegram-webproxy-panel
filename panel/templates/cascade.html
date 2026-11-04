@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="csrf" content="{{csrf}}"><title>RELAY / Каскад</title><link rel="stylesheet" href="/control/static/panel.css"><link rel="stylesheet" href="/control/static/cascade.css"><script src="/control/static/cascade.js" defer></script></head>
+<body><div id="fsociety-preview"><div class="fc">
+{% include 'header.html' %}{% include 'navigation.html' %}
+<main class="fc-main"><div class="fc-heading"><div><div class="fc-label">ВЫХОДНОЙ СЕРВЕР</div><h2>Вход в России.<br>Выход за рубежом.</h2></div></div>
+<p>Первая версия: один выходной узел, весь клиентский трафик через него. Панель и SSH остаются на RU. При обрыве каскада прямой выход клиентов через RU запрещён. IPv6 через каскад пока не поддерживается.</p>
+<p id="cascade-state" role="status">Подключаюсь…</p><p id="cascade-check"></p><p id="cascade-message" role="status"></p><p id="cascade-health" role="alert"></p><p id="cascade-error" role="alert"></p>
+<form id="cascade-config"><h3>1. Адрес выходного сервера</h3>
+<label for="cascade-name">Название</label><input id="cascade-name" name="name" value="Норвегия" maxlength="60" required>
+<label for="cascade-host">Публичный IPv4 зарубежного VPS</label><input id="cascade-host" name="host" autocomplete="off" required>
+<label for="cascade-port">UDP-порт туннеля</label><input id="cascade-port" name="port" type="number" value="51821" min="1024" max="65535" required>
+<p><button class="fc-button fc-primary" type="submit">Сохранить адрес</button></p></form>
+<div class="fc-rule"><div><h3>2. Подключить зарубежный VPS</h3>
+<p>Скопируй данные RU ниже. На отдельном чистом зарубежном VPS с Ubuntu 24.04 amd64 запусти обычный установщик и выбери «Выходной узел каскада». Домен для него не нужен. Вставь данные RU по запросу установщика и открой выбранный входящий UDP-порт в кабинете хостера.</p>
+<pre class="fc-cascade-command"><code>bash &lt;(curl -fsSL https://raw.githubusercontent.com/cveloy102/telegram-webproxy-panel/main/install.sh) --exit-node</code></pre>
+<label for="cascade-pairing">Данные RU — только публичный ключ и порт</label><textarea id="cascade-pairing" rows="4" readonly></textarea>
+<p>На выходном VPS выполняется та же команда установки, что и в README проекта. Полная панель там не устанавливается. Не вставляй сюда пароль root, SSH-ключ или приватный ключ туннеля.</p></div></div>
+<form id="cascade-pair"><label for="cascade-reply">Ответ установщика зарубежного VPS</label><textarea id="cascade-reply" name="reply" rows="4" required></textarea><p><button class="fc-button" type="submit">Добавить ответ</button></p></form>
+<div class="fc-rule"><div><h3>3. Проверить и включить</h3><p>Проверка выполняет HTTPS-запрос через туннель и сверяет выходной IP с адресом зарубежного VPS. При переключении текущие подключения прервутся — клиентам потребуется переподключиться.</p>
+<button class="fc-button" id="cascade-test" type="button" disabled>Проверить выход</button>
+<button class="fc-button fc-primary" id="cascade-enable" type="button" disabled>Включить каскад</button>
+<p><button class="fc-button" id="cascade-disable" type="button" disabled>Выключить каскад и разрешить выход через RU</button></p></div></div>
+</main></div></div></body></html>
