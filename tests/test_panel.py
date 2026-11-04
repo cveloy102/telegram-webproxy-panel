@@ -27,6 +27,10 @@ class PanelTests(unittest.TestCase):
         from unittest.mock import patch
         self.setup_owner();url='https://proxy.example.com'
         page=self.client.get('/control/cascade',base_url=url)
+        for asset in ('cascade.js','cascade.css'):
+            response=self.client.get('/control/static/'+asset,base_url=url)
+            self.assertEqual(response.status_code,200)
+            response.close()
         token=re.search(r'name="csrf" content="([^"]+)"',page.text).group(1)
         headers={'Origin':url,'X-CSRF-Token':token}
         payload={'op':'configure','name':'Norway','host':'138.16.143.97','port':51821}
