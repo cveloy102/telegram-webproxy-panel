@@ -23,6 +23,30 @@ import app as panel
 from helper import Controller, atomic
 
 class PanelTests(unittest.TestCase):
+    def test_awg_routing_actions_require_owner_csrf_and_allowlist(self):
+        from unittest.mock import patch
+        url='https://proxy.example.com'
+        payload={'op':'routing','id':'u_one','routing':'ru_split'}
+        with patch('awg_routes.helper') as helper:
+            self.assertEqual(self.client.post('/control/api/awg/action',base_url=url,json=payload).status_code,403)
+            helper.assert_not_called()
+        self.setup_owner()
+        page=self.client.get('/control/amnezia',base_url=url)
+        self.assertIn('routing-status',page.text)
+        token=re.search(r'name="csrf" content="([^"]+)"',page.text).group(1)
+        with patch('awg_routes.helper',return_value={'ok':True}) as helper:
+            self.assertEqual(self.client.post('/control/api/awg/action',base_url=url,json=payload).status_code,403)
+            helper.assert_not_called()
+            for op in ('routing','geo_update','geo_rollback','route_check'):
+                data=dict(payload,op=op)
+                result=self.client.post('/control/api/awg/action',base_url=url,json=data,
+                    headers={'Origin':url,'X-CSRF-Token':token})
+                self.assertEqual(result.status_code,200)
+                helper.assert_called_with(data)
+            result=self.client.post('/control/api/awg/action',base_url=url,json={'op':'shell'},
+                headers={'Origin':url,'X-CSRF-Token':token})
+            self.assertEqual(result.status_code,400)
+
     def test_cascade_owner_api_and_service_errors(self):
         from unittest.mock import patch
         self.setup_owner();url='https://proxy.example.com'

@@ -124,8 +124,10 @@ class Controller:
                 if path.exists():parts.append(path.read_bytes())
         if self.paths.get('awg') and (self.paths['awg']/'awg.sqlite3').exists():
             with contextlib.closing(sqlite3.connect(f"file:{self.paths['awg']/'awg.sqlite3'}?mode=ro",uri=True)) as c:
-                parts.append(repr(c.execute('SELECT * FROM settings ORDER BY k').fetchall()).encode())
-                parts.append(repr(c.execute('SELECT id,name,grp,private,public,psk,address,enabled,expires,quota,enforce FROM users ORDER BY id').fetchall()).encode())
+                parts.append(repr(c.execute("SELECT * FROM settings WHERE k NOT IN ('routing_checked','routing_error') ORDER BY k").fetchall()).encode())
+                columns='id,name,grp,private,public,psk,address,enabled,expires,quota,enforce'
+                if 'routing' in {r[1] for r in c.execute('PRAGMA table_info(users)')}:columns+=',routing'
+                parts.append(repr(c.execute('SELECT '+columns+' FROM users ORDER BY id').fetchall()).encode())
         for path in (self.paths['users'],self.paths['owner']/'auth.json',self.paths['hy2config']):
             if path.exists():parts.append(path.read_bytes())
         if self.paths.get('caddy') and self.paths['caddy'].exists():parts.append(self.paths['caddy'].read_bytes())

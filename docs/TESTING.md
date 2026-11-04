@@ -43,3 +43,27 @@ shellcheck install.sh
 Настоящий перенос между двумя публичными IP требует двух VPS и переключения
 DNS; проверка восстановления на одном хосте не подменяет этот сценарий.
 Окончательные результаты релизного прогона публикуются вместе с релизом GitHub.
+# AWG IPv4 routing — 2026-11-05
+
+Branch: `codex/awg-ip-routing`.
+
+- 119 Linux Python unit tests passed, including legacy profile migration,
+  unchanged client configurations/keys, mode isolation, GeoIP validation,
+  last-good retention, rollback, pending connection-reset retry, owner/CSRF
+  protection, and portable database backup/restore.
+- Six existing Node UI checks passed; AWG checks also cover the mode selector,
+  default for new profiles, GeoIP status and unavailable-service controls.
+- `tests/smoke_cascade.py` passed in temporary Linux network namespaces:
+  real WireGuard cascade, complete 12,987-prefix seed loaded into nftables,
+  separate full/split client source IPs, RU/foreign egress, scoped UDP NAT reset,
+  missing GeoIP data, foreign tunnel outage without direct fallback, recovery,
+  management traffic and explicit global cascade disable.
+- A live HTTPS download from the configured GeoIP source passed validation and
+  matched the bundled seed. The production exit service remained active and all
+  test namespaces were cleaned up.
+
+These checks did not install the branch on the production RU server. The new
+network test uses veth to supply decrypted AWG-like packets; it does not replace
+an acceptance test with a real AWG client after deployment. Existing client
+config generation and the AWG transport implementation are unchanged. DNS and
+domain routing are intentionally excluded.

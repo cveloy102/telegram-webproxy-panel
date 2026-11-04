@@ -41,6 +41,7 @@ class AmneziaTests(unittest.TestCase):
         self.c=Controller(self.root/'awg',{'awg_domain':'vpn.example.com','awg_port':51820},test=True)
         self.c.call({'op':'create','name':'Друг','group':'Друзья'})
         self.uid=self.c.public()['users'][0]['id']
+        with self.c.db() as c:c.execute('DELETE FROM routing_pending')
 
     def user(self):
         with self.c.db() as c:return dict(c.execute('SELECT * FROM users WHERE id=?',(self.uid,)).fetchone())
@@ -151,6 +152,10 @@ class AmneziaTests(unittest.TestCase):
 
     def test_backup_restore_keeps_existing_configs_users_and_counters_on_new_ip(self):
         self.c.call({'op':'create','name':'Второй','group':'Семья'})
+        self.c.call({'op':'routing','id':self.uid,'routing':'cascade'})
+        from awg_routing import put,seed
+        with self.c.db() as c:put(c,'routing_previous',seed())
+        modes={u['id']:u['routing'] for u in self.c.public()['users']}
         self.c.ingest({self.user()['public']:(111,222,0)},'old-server')
         before={u['id']:self.c.call({'op':'key','id':u['id']})['conf'] for u in self.c.public()['users']}
         paths=self.paths();archive=self.root/'backup.tar.gz'
@@ -164,6 +169,9 @@ class AmneziaTests(unittest.TestCase):
         with restored.db() as c:c.execute('DELETE FROM samples')
         after={u['id']:restored.call({'op':'key','id':u['id']})['conf'] for u in restored.public()['users']}
         self.assertEqual(before,after)
+        self.assertEqual(modes,{u['id']:u['routing'] for u in restored.public()['users']})
+        self.assertTrue(restored.public()['routing']['ready'])
+        self.assertTrue(restored.public()['routing']['can_rollback'])
         self.assertEqual(next(u for u in restored.public()['users'] if u['id']==self.uid)['up'],111)
         self.assertTrue(manifest['amnezia'])
         with restored.db() as c:self.assertEqual(restored.render(c).count('[Peer]'),2)
@@ -178,6 +186,8 @@ class AmneziaTests(unittest.TestCase):
         self.c.call({'op':'limits','id':self.uid,'quota_gb':2,'enforce':True})
         self.assertNotEqual(before,control.signature())
         before=control.signature();self.c.call({'op':'rotate','id':self.uid})
+        self.assertNotEqual(before,control.signature())
+        before=control.signature();self.c.call({'op':'routing','id':self.uid,'routing':'cascade'})
         self.assertNotEqual(before,control.signature())
 
     def test_network_units_and_public_destination_isolation(self):

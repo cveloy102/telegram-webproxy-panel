@@ -77,6 +77,7 @@ def main():
             except subprocess.TimeoutExpired:engine.kill();engine.wait()
         subprocess.run(['ip','link','delete',INTERFACE],capture_output=True)
         subprocess.run(['nft','delete','table','inet','relay_awg'],capture_output=True)
+        subprocess.run(['nft','delete','table','inet','relay_awg_routing'],capture_output=True)
 
 
 if __name__=='__main__':main()

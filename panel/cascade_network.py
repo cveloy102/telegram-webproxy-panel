@@ -12,6 +12,7 @@ EXIT = '10.78.254.2'
 TABLE = '20781'
 MARK = '0x20781'
 OUTER_MARK = '0x20782'
+AWG_RU_MARK = '0x20783'
 PRIORITIES = ('10781', '10782')
 ROOT = Path('/etc/relay-cascade')
 PRIVATE = '0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/4, 240.0.0.0/4'
@@ -84,6 +85,7 @@ def entry_firewall(uids, enabled):
     return f'''table inet relay_cascade {{
  chain mark_forward {{
   type filter hook prerouting priority -150; policy accept;
+  iifname "awg-relay" meta mark {AWG_RU_MARK} return
   iifname "awg-relay" meta nfproto ipv4 meta mark set {MARK}
  }}
  chain mark_output {{
@@ -106,6 +108,8 @@ def entry_firewall(uids, enabled):
  chain forward_guard {{
   type filter hook forward priority -5; policy accept;
   iifname "awg-relay" meta nfproto ipv6 drop
+  iifname "awg-relay" meta mark {AWG_RU_MARK} oifname "{INTERFACE}" drop
+  iifname "awg-relay" meta mark {AWG_RU_MARK} return
   iifname "awg-relay" oifname != "{INTERFACE}" drop
   iifname "{INTERFACE}" oifname != "awg-relay" drop
   iifname "{INTERFACE}" ct state != {{ established, related }} drop

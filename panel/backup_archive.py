@@ -143,13 +143,20 @@ def inspect_tar(path,destination):
             c.row_factory=sqlite3.Row
             settings={r['k']:json.loads(r['v']) for r in c.execute('SELECT * FROM settings')}
             validate_settings(settings)
+            from awg_routing import validate_geo,policy
+            for key in ('routing_geo','routing_previous'):
+                if key in settings:validate_geo(settings[key])
             if settings['host']!=manifest.get('amnezia_domain') or settings['port']!=manifest.get('amnezia_port'):raise ValueError('Настройки AmneziaWG не совпадают с манифестом')
             peers=c.execute('SELECT * FROM users').fetchall()
             if len(peers)>100:raise ValueError('Слишком много пользователей AmneziaWG')
             addresses=set();publics=set()
             for u in peers:
+                if 'routing' in u.keys():policy(u['routing'])
                 if not re.fullmatch(r'u_[0-9a-f]{12}',u['id']) or not all(valid_key(u[k]) for k in ('private','public','psk')) or type(u['address']) is not int or not 2<=u['address']<=254 or u['address'] in addresses or u['public'] in publics:raise ValueError('Некорректный профиль AmneziaWG')
                 addresses.add(u['address']);publics.add(u['public'])
+            if c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='routing_pending'").fetchone():
+                for row in c.execute('SELECT address FROM routing_pending'):
+                    if type(row[0]) is not int or not 2<=row[0]<=254:raise ValueError('Некорректное состояние маршрутизации AWG')
     return manifest
 
 def decrypt(ciphertext,identity,destination):
