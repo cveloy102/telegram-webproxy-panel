@@ -70,6 +70,7 @@ def install_entry(setup):
         setup.json_write(ROOT / 'state.json', {'schema': 1, 'enabled': False}, mode=0o600)
     unit = '''[Unit]
 Description=Relay cascade tunnel and egress guard
+ConditionPathExists=!/var/lib/relay-migration/blocked
 After=network-online.target nftables.service
 PartOf=nftables.service
 Wants=network-online.target
@@ -78,7 +79,9 @@ Before=mtproxy.service hysteria-server.service amneziawg-server.service
 Type=notify
 NotifyAccess=main
 TimeoutStartSec=45
+ExecCondition=+/usr/bin/python3 /opt/relay-panel/current/panel/migration_state.py --can-start
 ExecStart=/usr/bin/python3 /opt/relay-panel/current/panel/cascade_control.py
+ExecStopPost=-/usr/sbin/ip link delete dev wg-cascade
 Restart=on-failure
 RestartSec=3
 RuntimeDirectory=relay-cascade
@@ -157,7 +160,7 @@ Wants=network-online.target
 Type=oneshot
 RemainAfterExit=true
 ExecStart=/usr/bin/python3 /opt/relay-cascade/cascade_install.py --apply-exit
-ExecStop=/usr/sbin/ip link delete dev wg-cascade
+ExecStopPost=-/usr/sbin/ip link delete dev wg-cascade
 UMask=0077
 [Install]
 WantedBy=multi-user.target

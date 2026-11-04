@@ -2,6 +2,7 @@
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="csrf" content="{{csrf}}"><title>RELAY / Каскад</title><link rel="stylesheet" href="/control/static/panel.css"><link rel="stylesheet" href="/control/static/cascade.css"><script src="/control/static/cascade.js" defer></script></head>
 <body><div id="fsociety-preview"><div class="fc">
 {% include 'header.html' %}{% include 'navigation.html' %}
+{% if migration_blocked %}<p role="status">Сервер остановлен для переноса или ожидает включения. Туннель возобновится вместе с остальными службами в разделе «Перенос».</p>{% endif %}
 <main class="fc-main"><div class="fc-heading"><div><div class="fc-label">ВЫХОДНОЙ СЕРВЕР</div><h2>Вход в России.<br>Выход за рубежом.</h2></div></div>
 <p>Первая версия: один выходной узел, весь клиентский трафик через него. Панель и SSH остаются на RU. При обрыве каскада прямой выход клиентов через RU запрещён. IPv6 через каскад пока не поддерживается.</p>
 <p id="cascade-state" role="status">Подключаюсь…</p><p id="cascade-check"></p><p id="cascade-message" role="status"></p><p id="cascade-health" role="alert"></p><p id="cascade-error" role="alert"></p>

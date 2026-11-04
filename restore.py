@@ -95,7 +95,7 @@ def restore_main(argv=None, *, confirmed=False):
         restored_caddy=merge_redirects(caddy.read_text(),redirects,domain)
         if not confirmed and input('Будут заменены все ключи, история и вход владельца. Введи ВОССТАНОВИТЬ: ').strip()!='ВОССТАНОВИТЬ':print('Отменено.');return
         import manage
-        services=['relay-backup','relay-panel','relay-helper','relay-hy2','hysteria-server','relay-awg','amneziawg-server','tproxy-server','mtproxy']
+        services=['relay-backup','relay-panel','relay-helper','relay-hy2','hysteria-server','relay-awg','amneziawg-server','tproxy-server','mtproxy','relay-cascade']
         subprocess.run(['systemctl','stop',*services],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         before=manage.backup(include_programs=True);print('Копия состояния до восстановления:',before)
         from backup_control import Controller as Backup

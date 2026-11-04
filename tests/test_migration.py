@@ -58,6 +58,18 @@ class MigrationTests(unittest.TestCase):
         self.assertTrue(migration_state.blocked())
         self.assertNotIn('caddy',[x[1] for x in self.commands])
 
+    def test_cascade_stops_before_snapshot_and_resumes_before_clients(self):
+        self.active['relay-cascade']=True
+        self.backup.snapshot.side_effect=lambda **kwargs:self.assertFalse(self.active['relay-cascade'])
+        self.stop()
+        self.assertFalse(self.active['relay-cascade'])
+        self.commands=[]
+        response=Mock();response.__enter__=Mock(return_value=Mock(status=200));response.__exit__=Mock(return_value=False)
+        with patch('urllib.request.urlopen',return_value=response):self.control.work('resume',contextlib.nullcontext())
+        started=[args[1] for args in self.commands if args[0]=='start']
+        self.assertEqual(started[0],'relay-cascade')
+        self.assertTrue(self.active['relay-cascade'])
+
     def test_upload_failure_keeps_stopped_and_retry_uses_original_inventory(self):
         self.backup.status.return_value.update(error='Диск недоступен',pending=True)
         self.stop()
