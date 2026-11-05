@@ -32,7 +32,8 @@ app.secret_key = CONFIG['session_key']
 app.config.update(SESSION_COOKIE_NAME='relay_owner', SESSION_COOKIE_SECURE=True,
                   SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Strict',
                   SESSION_COOKIE_PATH=PREFIX, MAX_CONTENT_LENGTH=16384,
-                  PERMANENT_SESSION_LIFETIME=dt.timedelta(hours=8))
+                  PERMANENT_SESSION_LIFETIME=dt.timedelta(days=30),
+                  SESSION_REFRESH_EACH_REQUEST=False)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
 def db():
