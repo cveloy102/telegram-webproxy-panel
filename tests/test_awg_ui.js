@@ -17,6 +17,8 @@ vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../panel/st
   await vm.runInContext('refresh()',context);
   assert.match(element('#detail').innerHTML,/Первый/);
   assert.match(element('#detail').innerHTML,/Российские IP через RU/);
+  assert.match(element('#users').innerHTML,/awg-route-split[^>]*>RU \+ EU<\/span>/);
+  assert.match(element('#users').innerHTML,/awg-route-eu[^>]*>EU<\/span>/);
   assert.match(element('#routing-status').textContent,/RU-сетей/);
   assert.equal(element('#geo-rollback').disabled,false);
   element('#new').onclick();
@@ -26,6 +28,12 @@ vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../panel/st
   element('#users').onclick({target:{closest:()=>({dataset:{user:'two'}})}});
   assert.match(element('#detail').innerHTML,/Второй &lt;тест&gt;/);
   assert.match(element('#detail').innerHTML,/Всё через Норвегию/);
+  response.routing.cascade_enabled=false;
+  await vm.runInContext('refresh()',context);
+  assert.match(element('#users').innerHTML,/awg-route-direct[^>]*>RU<\/span>/);
+  assert.doesNotMatch(element('#users').innerHTML,/>EU<\/span>/);
+  response.routing.cascade_enabled=true;
+  await vm.runInContext('refresh()',context);
   element('#detail').onclick({target:{closest:()=>({dataset:{op:'routing',id:'two'}})}});
   assert.match(element('#dialogbody').innerHTML,/value="cascade" selected/);
   vm.runInContext('close()',context);
