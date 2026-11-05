@@ -160,6 +160,27 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(self.post('setup',code=code,password='a-long-test-password').status_code,302)
         seed=panel.owner()['totp']
         self.assertEqual(self.post('enroll',otp=panel.otp(seed,int(time.time())//30)).status_code,200)
+    def test_owner_session_lasts_30_days_without_refresh(self):
+        from unittest.mock import patch
+        self.setup_owner()
+        self.post('logout')
+        with panel.db() as conn:
+            conn.execute('INSERT INTO recovery VALUES(?)',(panel.recovery_hash('SESSIONTEST'),))
+        issued=time.time()
+        response=self.post('login',password='a-long-test-password',otp='SESSIONTEST')
+        self.assertEqual(response.status_code,302)
+        from email.utils import parsedate_to_datetime
+        from http.cookies import SimpleCookie
+        cookie=SimpleCookie();cookie.load(response.headers['Set-Cookie'])
+        expires=parsedate_to_datetime(cookie['relay_owner']['expires']).timestamp()
+        self.assertAlmostEqual(expires-issued,30*86400,delta=3)
+        with patch('time.time',return_value=issued+29*86400):
+            response=self.client.get('/control/',base_url='https://proxy.example.com')
+            self.assertNotIn('action="/control/login"',response.text)
+            self.assertNotIn('Set-Cookie',response.headers)
+        with patch('time.time',return_value=issued+31*86400):
+            response=self.client.get('/control/',base_url='https://proxy.example.com')
+            self.assertIn('action="/control/login"',response.text)
     def test_auth_and_replay(self):
         self.assertEqual(self.client.get('/control/',base_url='https://proxy.example.com').headers['Referrer-Policy'],'same-origin')
         self.assertEqual(self.client.get('/control/api/state',base_url='https://proxy.example.com').status_code,401)
