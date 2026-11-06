@@ -119,7 +119,7 @@ class Controller:
     def signature(self):
         parts=[]
         if self.paths.get('cascade'):
-            for name in ('state.json','private.key','public.key'):
+            for name in ('state.json','private.key','public.key','transport.json'):
                 path=self.paths['cascade']/name
                 if path.exists():parts.append(path.read_bytes())
         if self.paths.get('awg') and (self.paths['awg']/'awg.sqlite3').exists():

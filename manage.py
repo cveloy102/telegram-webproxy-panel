@@ -52,6 +52,7 @@ def backup(include_programs=False):
             return None if P(item.name).name in ('awg.sqlite3','awg.sqlite3-wal','awg.sqlite3-shm','awg.sqlite3-journal') else (None if item.name.endswith(('panel.sqlite3','panel.sqlite3-wal','panel.sqlite3-shm','panel.sqlite3-journal','hy2.sqlite3','hy2.sqlite3-wal','hy2.sqlite3-shm','hy2.sqlite3-journal')) else item)
         paths=['/var/lib/relay-awg','/etc/systemd/system/relay-awg.service','/etc/systemd/system/amneziawg-server.service','/etc/tmpfiles.d/relay-awg.conf','/etc/sysctl.d/80-relay-awg.conf','/usr/local/bin/awg','/usr/local/bin/amneziawg-go','/etc/hysteria','/var/lib/hysteria','/var/lib/relay-hy2','/var/lib/relay-backup','/srv/relay-site','/etc/systemd/system/relay-backup.service','/etc/systemd/system/relay-hy2.service','/etc/systemd/system/hysteria-server.service','/usr/local/bin/hysteria','/etc/relay-panel','/etc/tproxy-server','/etc/mtproxy','/etc/caddy/Caddyfile','/var/lib/relay-panel','/var/lib/tproxy-accounting','/var/lib/caddy','/usr/local/sbin/relay-panel']
         paths+=['/etc/relay-cascade','/etc/systemd/system/relay-cascade.service','/etc/sysctl.d/81-relay-cascade.conf']
+        paths+=['/etc/systemd/system/relay-cascade-engine.service','/etc/systemd/system/relay-cascade.service.d/awg-transport.conf','/etc/tmpfiles.d/relay-cascade-awg.conf']
         paths += ['/etc/systemd/system/'+name+'.service.d/cascade.conf' for name in ('mtproxy','hysteria-server','amneziawg-server')]
         if include_programs:
             paths+=['/opt/relay-panel','/opt/MTProxy','/usr/local/bin/tproxy-server']

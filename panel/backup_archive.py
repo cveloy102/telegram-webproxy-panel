@@ -48,7 +48,7 @@ def build_tar(output,paths,backup_dir=None):
         if paths.get('awg') and (paths['awg']/'awg.sqlite3').exists():
             dest=temp/'awg.sqlite3';sqlite_snapshot(paths['awg']/'awg.sqlite3',dest);files['amnezia/awg.sqlite3']=dest
         if paths.get('cascade'):
-            for name in ('state.json','private.key','public.key'):
+            for name in ('state.json','private.key','public.key','transport.json'):
                 path=paths['cascade']/name
                 if path.is_file():
                     dest=temp/('cascade_'+name);dest.write_bytes(path.read_bytes());dest.chmod(0o600)
@@ -111,7 +111,7 @@ def inspect_tar(path,destination):
         for item in archive:
             name=item.name
             if not item.isfile() or name.startswith('/') or '..' in Path(name).parts or '\\' in name or name in names:raise ValueError('Небезопасная структура архива.')
-            if name!='manifest.json' and name not in ('telegram/users.json','telegram/usage.json','owner/auth.json','owner/panel.sqlite3','hysteria/hy2.sqlite3','amnezia/awg.sqlite3','backup/config.json','backup/rclone.conf','cascade/state.json','cascade/private.key','cascade/public.key') and not name.startswith(('site/','hysteria/cover/')):raise ValueError('Неизвестный файл в архиве.')
+            if name!='manifest.json' and name not in ('telegram/users.json','telegram/usage.json','owner/auth.json','owner/panel.sqlite3','hysteria/hy2.sqlite3','amnezia/awg.sqlite3','backup/config.json','backup/rclone.conf','cascade/state.json','cascade/private.key','cascade/public.key','cascade/transport.json') and not name.startswith(('site/','hysteria/cover/')):raise ValueError('Неизвестный файл в архиве.')
             names.add(name);total+=item.size
             if total>MAX_EXPANDED or len(names)>2000:raise ValueError('Архив превышает допустимый размер.')
             members.append(item)
@@ -126,6 +126,11 @@ def inspect_tar(path,destination):
                 expected=manifest['files'][item.name]
                 if not isinstance(expected,dict) or expected.get('size')!=len(body) or expected.get('sha256')!=hashlib.sha256(body).hexdigest():raise ValueError('Проверка целостности копии не пройдена.')
             target=destination/item.name;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(body);target.chmod(0o600)
+    transport=destination/'cascade/transport.json'
+    if transport.exists():
+        from cascade_network import validate_transport
+        validate_transport(json.loads(transport.read_text()))
+        if not (destination/'cascade/state.json').exists():raise ValueError('Транспорт без состояния каскада.')
     for name in ('owner/panel.sqlite3','hysteria/hy2.sqlite3','amnezia/awg.sqlite3'):
         p=destination/name
         if p.exists():
