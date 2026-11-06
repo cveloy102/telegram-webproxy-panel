@@ -67,3 +67,22 @@ network test uses veth to supply decrypted AWG-like packets; it does not replace
 an acceptance test with a real AWG client after deployment. Existing client
 config generation and the AWG transport implementation are unchanged. DNS and
 domain routing are intentionally excluded.
+
+## Inter-server AmneziaWG 3.1 — 2026-11-06
+
+The cascade transport checks cover validation, legacy WireGuard fallback,
+peer preservation during syncconf, and keeping secrets out of process arguments.
+The 19 cascade tests and 12 backup tests passed in isolated directories on both
+Ubuntu nodes. Existing full CI continues to exercise the default WG cascade.
+
+Production acceptance separately exercised a parallel AWG candidate with large
+bidirectional packets, two temporary actual AWG clients in split/full modes,
+a real Hysteria QUIC client with TLS verification, and Hysteria/MTProxy UID
+egress. All original client configuration hashes and routing modes were retained.
+Both controller restarts and automatic recovery after an intentional engine
+crash passed. Encrypted copies were checked against cloud size/hash; the new
+RU copy and both exit copies were decrypted with the existing recovery key.
+
+These production checks do not establish operator-specific DPI resistance,
+maximum throughput, or successful full VPS reboot. The manual WG rollback
+archive/script was prepared and checked but a live rollback was not rehearsed.
