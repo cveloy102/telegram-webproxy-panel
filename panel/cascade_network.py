@@ -4,6 +4,7 @@ import ipaddress
 import json
 from pathlib import Path
 import subprocess
+import time
 
 INTERFACE = 'wg-cascade'
 NETWORK = '10.78.254.0/30'
@@ -12,9 +13,97 @@ EXIT = '10.78.254.2'
 TABLE = '20781'
 MARK = '0x20781'
 OUTER_MARK = '0x20782'
+AWG_RU_MARK = '0x20783'
 PRIORITIES = ('10781', '10782')
 ROOT = Path('/etc/relay-cascade')
 PRIVATE = '0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/4, 240.0.0.0/4'
+
+
+def validate_transport(value):
+    """Root-only optional transport; missing file preserves legacy WireGuard."""
+    if not isinstance(value, dict) or not {'schema', 'type', 'parameters'} <= set(value) or set(value) - {'schema', 'type', 'parameters', 'entry_host', 'entry_port'} or value['schema'] != 1 or value['type'] != 'amneziawg-3.1':
+        raise ValueError('Некорректный транспорт каскада.')
+    if 'entry_host' in value or 'entry_port' in value:
+        endpoint(value.get('entry_host'))
+        if type(value.get('entry_port')) is not int or not 1024 <= value['entry_port'] <= 65535: raise ValueError('Некорректный порт входного узла.')
+    p = value['parameters']
+    required = {'HeaderProtectionKey', 'S1', 'S2', 'S3', 'S4', 'H1', 'H2', 'H3', 'H4'}
+    optional = {'Jc', 'Jmin', 'Jmax', 'ContentPaddingAddition', 'RekeyAfterTime', 'RekeyTimeout', 'KeepaliveTimeout', 'RandomTrailers', 'DisableCookies'}
+    if not isinstance(p, dict) or not required <= set(p) or set(p) - required - optional:
+        raise ValueError('Некорректные параметры транспорта каскада.')
+    public_key(p['HeaderProtectionKey'])
+    for k in ('S1', 'S2', 'S3', 'S4'):
+        if type(p[k]) is not int or not 12 <= p[k] <= 128: raise ValueError('Некорректный padding каскада.')
+    for i in range(1, 5):
+        if p['H'+str(i)] != i: raise ValueError('Header Protection требует совместимых H1-H4.')
+    for k in ('Jc', 'Jmin', 'Jmax'):
+        if k in p and (type(p[k]) is not int or not 0 <= p[k] <= 1000): raise ValueError('Некорректный junk каскада.')
+    if p.get('Jmin', 0) > p.get('Jmax', 0): raise ValueError('Некорректный диапазон junk.')
+    for k in ('ContentPaddingAddition', 'RekeyAfterTime', 'RekeyTimeout', 'KeepaliveTimeout'):
+        if k not in p: continue
+        pieces = str(p[k]).split('-')
+        if not 1 <= len(pieces) <= 2 or any(not x.isascii() or not x.isdecimal() for x in pieces): raise ValueError('Некорректный диапазон каскада.')
+        nums = list(map(int, pieces))
+        if not 0 <= nums[0] <= nums[-1] <= (128 if k == 'ContentPaddingAddition' else 180): raise ValueError('Диапазон каскада слишком велик.')
+    for k in ('RandomTrailers', 'DisableCookies'):
+        if k in p and p[k] not in ('on', 'off'): raise ValueError('Некорректный флаг каскада.')
+    if p.get('RandomTrailers') == 'on' and len({p[k] for k in ('S1','S2','S3','S4')}) != 1:
+        raise ValueError('RandomTrailers требует одинаковые S1-S4.')
+    return value
+
+
+def transport_config(root=ROOT):
+    path = Path(root) / 'transport.json'
+    return validate_transport(json.loads(path.read_text())) if path.exists() else None
+
+
+def tunnel_tool(root=ROOT):
+    return '/usr/local/bin/awg' if transport_config(root) else 'wg'
+
+
+def install_transport_runtime():
+    """Install only the optional cascade engine, independent of client AWG."""
+    if not transport_config(): return
+    if not all(Path(p).is_file() for p in ('/usr/local/bin/awg', '/usr/local/bin/amneziawg-go')):
+        raise RuntimeError('Для восстановления AWG каскада нужны проверенные бинарные файлы AmneziaWG 3.1.')
+    Path('/run/amneziawg').mkdir(mode=0o700, exist_ok=True)
+    Path('/run/relay-cascade').mkdir(mode=0o750, exist_ok=True)
+    Path('/etc/tmpfiles.d/relay-cascade-awg.conf').write_text('d /run/amneziawg 0700 root root -\nd /run/relay-cascade 0750 root root -\n')
+    service = 'relay-cascade.service' if (ROOT / 'state.json').exists() else 'relay-cascade-exit.service'
+    unit = '''[Unit]
+Description=AmneziaWG 3.1 inter-server cascade engine
+After=network-online.target nftables.service
+Wants=network-online.target
+ConditionPathExists=/etc/relay-cascade/transport.json
+ConditionPathExists=!/var/lib/relay-migration/blocked
+[Service]
+Type=notify
+NotifyAccess=main
+TimeoutStartSec=30
+ExecStart=ENGINE_COMMAND
+Restart=always
+RestartSec=2
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/run/amneziawg /run/relay-cascade
+CapabilityBoundingSet=CAP_NET_ADMIN
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+TimeoutStopSec=10
+[Install]
+WantedBy=multi-user.target
+'''
+    unit = unit.replace('[Service]', 'PartOf=' + service + '\n[Service]')
+    module = str(Path(__file__).resolve())
+    unit = unit.replace('ENGINE_COMMAND', '/usr/bin/python3 ' + module + ' --engine')
+    Path('/etc/systemd/system/relay-cascade-engine.service').write_text(unit)
+    folder = Path('/etc/systemd/system') / (service + '.d')
+    folder.mkdir(exist_ok=True)
+    folder.joinpath('awg-transport.conf').write_text('[Unit]\nWants=relay-cascade-engine.service\nAfter=relay-cascade-engine.service\n[Service]\nRuntimeDirectory=relay-cascade\nReadWritePaths=/run/amneziawg /run/relay-cascade\n')
+    run('systemctl', 'daemon-reload')
+    run('systemctl', 'enable', 'relay-cascade-engine.service')
 
 
 def run(*args, **kwargs):
@@ -84,6 +173,7 @@ def entry_firewall(uids, enabled):
     return f'''table inet relay_cascade {{
  chain mark_forward {{
   type filter hook prerouting priority -150; policy accept;
+  iifname "awg-relay" meta mark {AWG_RU_MARK} return
   iifname "awg-relay" meta nfproto ipv4 meta mark set {MARK}
  }}
  chain mark_output {{
@@ -106,6 +196,8 @@ def entry_firewall(uids, enabled):
  chain forward_guard {{
   type filter hook forward priority -5; policy accept;
   iifname "awg-relay" meta nfproto ipv6 drop
+  iifname "awg-relay" meta mark {AWG_RU_MARK} oifname "{INTERFACE}" drop
+  iifname "awg-relay" meta mark {AWG_RU_MARK} return
   iifname "awg-relay" oifname != "{INTERFACE}" drop
   iifname "{INTERFACE}" oifname != "awg-relay" drop
   iifname "{INTERFACE}" ct state != {{ established, related }} drop
@@ -171,15 +263,47 @@ def preflight():
 
 
 def setup_interface(private_path, peer, entry=True, host=None, port=51821):
+    transport = transport_config(Path(private_path).parent)
     if subprocess.run(['ip', 'link', 'show', 'dev', INTERFACE], capture_output=True).returncode:
-        run('ip', 'link', 'add', 'dev', INTERFACE, 'type', 'wireguard')
-    command = ['wg', 'set', INTERFACE, 'fwmark', OUTER_MARK, 'private-key', str(private_path), 'peer', public_key(peer),
+        if transport:
+            run('systemctl', 'start', 'relay-cascade-engine.service')
+            for _ in range(50):
+                if Path('/run/amneziawg/' + INTERFACE + '.sock').exists(): break
+                time.sleep(.1)
+            else: raise RuntimeError('AmneziaWG каскада не запустилась.')
+        else:
+            run('ip', 'link', 'add', 'dev', INTERFACE, 'type', 'wireguard')
+    tool = '/usr/local/bin/awg' if transport else 'wg'
+    if transport:
+        # The shared protection key never appears in argv, logs or status responses.
+        import os, tempfile
+        pending = None
+        try:
+            with tempfile.NamedTemporaryFile(mode='w', dir='/run/relay-cascade', prefix='transport-', delete=False) as f:
+                pending = Path(f.name)
+                os.chmod(pending, 0o600)
+                f.write('[Interface]\nPrivateKey = ' + Path(private_path).read_text().strip() + '\n')
+                f.write('FwMark = ' + OUTER_MARK + '\n')
+                if not entry: f.write('ListenPort = ' + str(port) + '\n')
+                elif 'entry_port' in transport: f.write('ListenPort = ' + str(transport['entry_port']) + '\n')
+                for k, v in transport['parameters'].items(): f.write(k + ' = ' + str(v) + '\n')
+                f.write('\n[Peer]\nPublicKey = ' + public_key(peer) + '\nAllowedIPs = ' + ('0.0.0.0/0' if entry else ENTRY + '/32') + '\n')
+                if entry: f.write('Endpoint = ' + endpoint(host) + ':' + str(port) + '\nPersistentKeepalive = 25\n')
+                elif 'entry_host' in transport: f.write('Endpoint = ' + transport['entry_host'] + ':' + str(transport['entry_port']) + '\nPersistentKeepalive = 25\n')
+                f.flush()
+            run(tool, 'syncconf', INTERFACE, str(pending))
+        finally:
+            if pending is not None: pending.unlink(missing_ok=True)
+    command = [tool, 'set', INTERFACE, 'fwmark', OUTER_MARK, 'private-key', str(private_path), 'peer', public_key(peer),
                'allowed-ips', '0.0.0.0/0' if entry else ENTRY + '/32']
     if entry: command += ['endpoint', endpoint(host) + ':' + str(port), 'persistent-keepalive', '25']
     else: command[3:3] = ['listen-port', str(port)]
+    if transport and 'entry_host' in transport:
+        if entry: command[3:3] = ['listen-port', str(transport['entry_port'])]
+        else: command += ['endpoint', transport['entry_host'] + ':' + str(transport['entry_port']), 'persistent-keepalive', '25']
     # wg set is incremental: remove a previous exit peer when re-pairing.
-    for previous in run('wg', 'show', INTERFACE, 'peers').stdout.split():
-        if previous != peer: run('wg', 'set', INTERFACE, 'peer', previous, 'remove')
+    for previous in run(tool, 'show', INTERFACE, 'peers').stdout.split():
+        if previous != peer: run(tool, 'set', INTERFACE, 'peer', previous, 'remove')
     run(*command)
     run('ip', 'address', 'replace', (ENTRY if entry else EXIT) + '/30', 'dev', INTERFACE)
     run('ip', 'link', 'set', 'dev', INTERFACE, 'mtu', '1280', 'up')
@@ -203,3 +327,37 @@ def remove_runtime():
         subprocess.run(['ip', '-4', 'rule', 'del', 'priority', priority], capture_output=True)
     subprocess.run(['ip', '-4', 'route', 'flush', 'table', TABLE], capture_output=True)
     subprocess.run(['ip', 'link', 'delete', 'dev', INTERFACE], capture_output=True)
+
+
+def serve_engine():
+    """Reapply peer configuration on every engine restart, also on the oneshot exit."""
+    import os, socket
+    transport_config()
+    process = subprocess.Popen(['/usr/local/bin/amneziawg-go', '-f', INTERFACE])
+    try:
+        for _ in range(100):
+            if process.poll() is not None: raise RuntimeError('Движок каскада остановился при запуске.')
+            if Path('/run/amneziawg/' + INTERFACE + '.sock').exists(): break
+            time.sleep(.05)
+        else: raise RuntimeError('Не появился сокет каскада.')
+        entry = (ROOT / 'state.json').exists()
+        state = json.loads((ROOT / ('state.json' if entry else 'exit.json')).read_text())
+        setup_interface(ROOT / 'private.key', state['exit_public_key' if entry else 'ru_public_key'], entry=entry,
+                        host=state.get('host'), port=state['port'])
+        address = os.getenv('NOTIFY_SOCKET')
+        if address:
+            if address.startswith('@'): address = '\0' + address[1:]
+            with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as notification:
+                notification.connect(address); notification.sendall(b'READY=1')
+        status = process.wait()
+        raise RuntimeError('Движок каскада остановился: ' + str(status))
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try: process.wait(timeout=5)
+            except subprocess.TimeoutExpired: process.kill(); process.wait()
+
+
+if __name__ == '__main__':
+    import sys
+    if sys.argv[1:] == ['--engine']: serve_engine()

@@ -43,8 +43,9 @@ def link(left, right, left_device, right_device, left_ip, right_ip):
         ns(name, 'ip', 'link', 'set', device, 'up')
 
 
-def curl(name, host='203.0.113.2', uid=None, succeeds=True):
+def curl(name, host='203.0.113.2', uid=None, succeeds=True, source=None):
     command = ['curl', '-q', '--noproxy', '*', '--silent', '--show-error', '--max-time', '2', 'http://' + host + ':18082/']
+    if source:command+=['--interface',source]
     if uid: command = ['setpriv', '--reuid', str(uid), '--regid', str(uid), '--clear-groups', *command]
     result = subprocess.run(['ip', 'netns', 'exec', names[name], *command], capture_output=True, text=True, timeout=5)
     if succeeds:
@@ -62,6 +63,9 @@ with tempfile.TemporaryDirectory(prefix='relay-cascade-smoke-') as temporary:
         link('ru', 'exit', 'underlay', 'underlay', '93.184.216.1/30', '93.184.216.2/30')
         link('exit', 'web', 'uplink', 'uplink', '203.0.113.1/30', '203.0.113.2/30')
         link('ru', 'client', 'awg-relay', 'client', '10.77.0.1/24', '10.77.0.2/24')
+        ns('client','ip','address','add','10.77.0.3/24','dev','client')
+        ns('web','ip','address','add','203.0.113.4/32','dev','uplink')
+        ns('exit','ip','route','add','203.0.113.4/32','via','203.0.113.2')
         ns('ru', 'ip', 'route', 'add', 'default', 'via', '93.184.216.2')
         ns('client', 'ip', 'route', 'add', 'default', 'via', '10.77.0.1')
         ns('web', 'ip', 'route', 'add', 'default', 'via', '203.0.113.1')
@@ -103,6 +107,45 @@ HTTPServer(('0.0.0.0',18082),Handler).serve_forever()
                 last_error = str(error); time.sleep(.2)
         else: raise AssertionError('Local proxy traffic did not use the exit: ' + last_error)
         assert curl('client') == '203.0.113.1'
+        # Compile the actual bundled 13k-prefix set in the real kernel first.
+        py('ru','from awg_routing import Runtime,seed;Runtime().install(["10.77.0.2"],seed()["networks"],[])')
+        assert curl('client')=='203.0.113.1'
+        # Synthetic public test destinations represent RU and non-RU here.
+        split='from awg_routing import Runtime;Runtime().install(["10.77.0.2"],["203.0.113.2/32"],[])'
+        py('ru',split)
+        assert curl('client')=='93.184.216.1','RU destination must use RU egress'
+        assert curl('client',host='203.0.113.4')=='203.0.113.1','Foreign destination must use cascade'
+        assert curl('client',source='10.77.0.3')=='203.0.113.1','Other profile must retain full cascade'
+        assert curl('ru',uid=1001)=='203.0.113.1','Proxy UID routing must remain unchanged'
+        # Same UDP tuple survives in conntrack across socket invocations. Flush
+        # only the switched peer, then prove that the observed NAT address moves.
+        udp_server='import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.bind(("0.0.0.0",18083))\nwhile True:\n b,a=s.recvfrom(128);s.sendto(a[0].encode(),a)'
+        processes.append(subprocess.Popen(['ip','netns','exec',names['web'],sys.executable,'-c',udp_server],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL))
+        time.sleep(.2)
+        def udp(source):
+            code='import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.settimeout(2);s.bind(('+repr(source)+',20000));s.sendto(b"test",("203.0.113.2",18083));print(s.recv(128).decode())'
+            return ns('client',sys.executable,'-c',code).stdout.strip()
+        assert udp('10.77.0.2')=='93.184.216.1'
+        assert udp('10.77.0.3')=='203.0.113.1'
+        py('ru','from awg_routing import Runtime,clear_connections;Runtime().install([],[],["10.77.0.2"]);clear_connections("10.77.0.2");Runtime().install([],[],[])')
+        assert udp('10.77.0.2')=='203.0.113.1'
+        assert udp('10.77.0.3')=='203.0.113.1'
+        py('ru','from awg_routing import Runtime,clear_connections;Runtime().install(["10.77.0.2"],["203.0.113.2/32"],["10.77.0.2"]);clear_connections("10.77.0.2");Runtime().install(["10.77.0.2"],["203.0.113.2/32"],[])')
+        assert udp('10.77.0.2')=='93.184.216.1'
+        # No usable geo data: block split only, retain the other profile.
+        py('ru','from awg_routing import Runtime;Runtime().install(["10.77.0.2"],[],[])')
+        curl('client',succeeds=False)
+        assert curl('client',source='10.77.0.3')=='203.0.113.1'
+        py('ru',split)
+        ns('ru','ip','link','delete','wg-cascade')
+        assert curl('client')=='93.184.216.1','RU destinations must survive cascade outage'
+        curl('client',host='203.0.113.4',succeeds=False)
+        curl('client',source='10.77.0.3',succeeds=False)
+        curl('ru',uid=1001,succeeds=False)
+        py('ru','from cascade_control import Controller;from pathlib import Path;Controller(Path('+repr(str(entry_root))+'),uids=[1001]).reconcile()')
+        # Restore all-cascade classification for the original bulk/outage suite.
+        py('ru','from awg_routing import Runtime,clear_connections;Runtime().install([],[],["10.77.0.2"]);clear_connections("10.77.0.2");Runtime().install([],[],[])')
+        assert curl('client')=='203.0.113.1'
         for name, user in (('ru', ['setpriv','--reuid','1001','--regid','1001','--clear-groups']),('client', [])):
             payload=ns(name,*user,'curl','-q','--noproxy','*','--fail','--silent','--max-time','5','http://203.0.113.2:18082/bulk').stdout
             assert len(payload)==524288, 'Bulk transfer failed: '+name
@@ -123,7 +166,7 @@ HTTPServer(('0.0.0.0',18082),Handler).serve_forever()
         py('ru', 'from cascade_network import *;replace_table("relay_cascade",entry_firewall([1001],False))')
         assert curl('ru', uid=1001) == '93.184.216.1'
         assert curl('client') == '93.184.216.1'
-        print('PASS: proxy sockets, AWG forwarding, replies, outage kill switch, management, recovery, explicit disable')
+        print('PASS: proxy sockets, AWG full/split profiles, real GeoIP set, scoped NAT reset, missing geo, RU/foreign outage isolation, bulk, recovery, explicit disable')
     except Exception:
         try:
             ns('ru','nft','insert','rule','inet','relay_cascade','mark_output','meta','nftrace','set','1')

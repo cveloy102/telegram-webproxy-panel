@@ -21,6 +21,7 @@ import time
 import unicodedata
 
 from migration_state import mutation
+import awg_routing as routing
 
 INTERFACE = 'awg-relay'
 BINARY = '/usr/local/bin/awg'
@@ -76,6 +77,7 @@ def validate_settings(s):
 class Controller:
     def __init__(self, data='/var/lib/relay-awg', initial=None, test=False):
         self.data=Path(data);self.test=test;self.lock=threading.RLock();self.updated=0;self.online={}
+        self.routing_runtime=routing.Runtime();self.routing_error='';self.geo_lock=threading.Lock()
         self.data.mkdir(parents=True,exist_ok=True);self.path=self.data/'awg.sqlite3'
         if not self.path.exists() and initial is None:raise ValueError('AmneziaWG не установлена')
         with self.db() as c:
@@ -86,7 +88,11 @@ class Controller:
               enforce INTEGER DEFAULT 0,last INTEGER DEFAULT 0,up INTEGER DEFAULT 0,down INTEGER DEFAULT 0);
             CREATE TABLE IF NOT EXISTS samples(id TEXT PRIMARY KEY,up INTEGER,down INTEGER,epoch TEXT);
             CREATE TABLE IF NOT EXISTS days(id TEXT,day TEXT,up INTEGER,down INTEGER,PRIMARY KEY(id,day));
+            CREATE TABLE IF NOT EXISTS routing_pending(address INTEGER PRIMARY KEY);
             ''')
+            # Legacy rows retain the exact previous all-through-cascade behavior.
+            if 'routing' not in {r['name'] for r in c.execute('PRAGMA table_info(users)')}:
+                c.execute("ALTER TABLE users ADD COLUMN routing TEXT NOT NULL DEFAULT 'cascade'")
             if not c.execute('SELECT 1 FROM settings').fetchone():
                 private=key()
                 settings={'host':initial['awg_domain'],'port':initial['awg_port'],'private':private,'public':public_key(private),
@@ -96,6 +102,9 @@ class Controller:
                 settings.update(zip(('H1','H2','H3','H4'),headers))
                 c.executemany('INSERT INTO settings VALUES(?,?)',[(k,json.dumps(v)) for k,v in settings.items()])
             validate_settings(self.settings(c))
+            if not c.execute("SELECT 1 FROM settings WHERE k='routing_geo'").fetchone():
+                try:routing.put(c,'routing_geo',routing.seed())
+                except (ValueError,OSError):LOG.error('AWG RU seed unavailable; split profiles will be blocked')
         self.path.chmod(0o600)
 
     @contextmanager
@@ -128,6 +137,7 @@ class Controller:
 
     def apply(self,c):
         if self.test:return
+        self.apply_routing(c)
         # syncconf preserves sessions/counters of unchanged peers. No keys in argv or logs.
         with tempfile.NamedTemporaryFile(mode='w',dir='/run/amneziawg',prefix='peers-',delete=False) as f:
             path=Path(f.name)
@@ -135,6 +145,89 @@ class Controller:
                 path.chmod(0o600);f.write(self.render(c));f.flush()
                 subprocess.run([BINARY,'syncconf',INTERFACE,str(path)],check=True,capture_output=True,timeout=10)
             finally:path.unlink(missing_ok=True)
+
+    def apply_routing(self,c):
+        split=['10.77.0.'+str(u['address']) for u in c.execute("SELECT address FROM users WHERE routing='ru_split'")]
+        try:geo=routing.load(c)
+        except (ValueError,TypeError):geo=None
+        pending=[r['address'] for r in c.execute('SELECT address FROM routing_pending ORDER BY address')]
+        self.routing_runtime.install(split,geo['networks'] if geo else [],['10.77.0.'+str(x) for x in pending])
+        # Desired modes are durable. Until old NAT flows are removed, only the
+        # affected peers are blocked; a controller restart retries the reset.
+        deadline=time.monotonic()+3
+        for address in pending:
+            if time.monotonic()>=deadline:break
+            routing.clear_connections('10.77.0.'+str(address))
+            c.execute('DELETE FROM routing_pending WHERE address=?',(address,))
+        remaining=[r['address'] for r in c.execute('SELECT address FROM routing_pending')]
+        self.routing_runtime.install(split,geo['networks'] if geo else [],['10.77.0.'+str(x) for x in remaining])
+        self.routing_error=''
+
+    @staticmethod
+    def queue_routing_reset(c,address=None):
+        if address is None:
+            c.execute("INSERT OR IGNORE INTO routing_pending SELECT address FROM users WHERE routing='ru_split'")
+        else:c.execute('INSERT OR IGNORE INTO routing_pending VALUES(?)',(address,))
+
+    def geo_update(self):
+        if not self.geo_lock.acquire(blocking=False):raise ValueError('Обновление RU-базы уже выполняется.')
+        try:
+            with mutation():
+                # Download outside the controller lock: stats and peer actions
+                # remain available while the source is slow/unreachable.
+                try:new=routing.fetch()
+                except (OSError,ValueError,subprocess.SubprocessError):
+                    with self.lock,self.db() as c:
+                        routing.put(c,'routing_checked',int(time.time()))
+                        routing.put(c,'routing_error','Не удалось загрузить RU-базу. Сохранён последний исправный список.')
+                    raise ValueError('Не удалось загрузить RU-базу. Сохранён последний исправный список.') from None
+                with self.lock,self.db() as c:
+                    try:
+                        try:old=routing.load(c)
+                        except (ValueError,TypeError):old=None
+                        if old:routing.check_change(old,new)
+                    except ValueError as error:
+                        routing.put(c,'routing_checked',int(time.time()));routing.put(c,'routing_error',str(error));c.commit()
+                        raise
+                    if not old or old['sha256']!=new['sha256']:
+                        if old:routing.put(c,'routing_previous',old)
+                        routing.put(c,'routing_geo',new)
+                        self.queue_routing_reset(c)
+                    routing.put(c,'routing_checked',int(time.time()));routing.put(c,'routing_error','')
+                    routing.put(c,'routing_hold',False);c.commit()
+                    from backup_notify import changed
+                    changed('awg')
+                    try:
+                        if not self.test:self.apply_routing(c)
+                    except (OSError,subprocess.SubprocessError):
+                        self.routing_error='RU-база сохранена; применение маршрутов будет повторено.'
+                        return {'ok':True,'notice':self.routing_error}
+            return {'ok':True,'notice':'RU-база проверена и обновлена.'}
+        finally:self.geo_lock.release()
+
+    def geo_worker(self):
+        while True:
+            try:
+                with self.db() as c:s=self.settings(c)
+                delay=3600 if s.get('routing_error') else routing.DAY
+                if not s.get('routing_hold') and time.time()-s.get('routing_checked',0)>=delay:self.geo_update()
+            except Exception:LOG.error('AWG RU list update unavailable')
+            time.sleep(60)
+
+    def routing_status(self,c,s):
+        try:geo=routing.load(c)
+        except (ValueError,TypeError):geo=None
+        try:previous=routing.load(c,'routing_previous')
+        except (ValueError,TypeError):previous=None
+        try:
+            cascade=json.loads(Path('/etc/relay-cascade/state.json').read_text()).get('enabled') is True
+        except (OSError,ValueError):cascade=False
+        return {'source':routing.SOURCE,'ready':bool(geo),'count':len(geo['networks']) if geo else 0,
+                'fetched':geo['fetched'] if geo else 0,'sha256':geo['sha256'] if geo else '',
+                'checked':s.get('routing_checked',0),'error':s.get('routing_error','') or self.routing_error,
+                'can_rollback':bool(previous),'cascade_enabled':cascade,'default':'ru_split',
+                'auto_paused':bool(s.get('routing_hold')),
+                'classifier':'geoip-v1','dns_enabled':False}
 
     def epoch(self):
         return subprocess.check_output(['systemctl','show','amneziawg-server','-p','InvocationID','--value'],text=True,timeout=5).strip()
@@ -176,17 +269,23 @@ class Controller:
         with self.lock,self.db() as c:
             s=self.settings(c);users=[];now=time.time()
             fresh=bool(self.updated and 0<=now-self.updated<20)
+            pending={r['address'] for r in c.execute('SELECT address FROM routing_pending')}
+            route_state=self.routing_status(c,s)
             day=dt.datetime.fromtimestamp(now,TZ).strftime('%Y-%m-%d');month=day[:7]
             for u in c.execute('SELECT * FROM users ORDER BY created,id'):
                 history=[dict(r) for r in c.execute('SELECT day,up,down FROM days WHERE id=? ORDER BY day',(u['id'],))]
                 allowed=self.allowed(u,s)
                 users.append({**{k:u[k] for k in ('id','name','grp','enabled','created','expires','quota','enforce','last','up','down')},
-                              'allowed':allowed,'reason':self.reason(u),'online':bool(allowed and fresh and self.online.get(u['id'])),
+                              'allowed':allowed,'reason':self.reason(u),
+                              'online':bool(allowed and fresh and self.online.get(u['id']) and u['address'] not in pending
+                                            and (u['routing']!='ru_split' or route_state['ready'])),
                               'address':'10.77.0.'+str(u['address']),
+                              'routing':u['routing'],'routing_pending':u['address'] in pending,
                               'today':sum(r['up']+r['down'] for r in history if r['day']==day),
                               'month':sum(r['up']+r['down'] for r in history if r['day'].startswith(month)),
                               'history':history})
-            return {'users':users,'host':s['host'],'port':s['port'],'paused':s['paused'],'updated':self.updated,'telemetry_ok':fresh,'version':'3.1'}
+            return {'users':users,'host':s['host'],'port':s['port'],'paused':s['paused'],'updated':self.updated,'telemetry_ok':fresh,'version':'3.1',
+                    'routing':route_state}
 
     def config(self,u,s):
         lines=['[Interface]','PrivateKey = '+u['private'],
@@ -200,6 +299,24 @@ class Controller:
     def call(self,p):
         op=p.get('op')
         if op=='status':return self.public()
+        if op=='geo_update':return self.geo_update()
+        if op=='route_check':
+            try:address=ipaddress.IPv4Address(p.get('address'))
+            except (ValueError,TypeError):raise ValueError('Введи IPv4-адрес назначения.') from None
+            if not address.is_global or any(address in net for net in routing.FORBIDDEN):raise ValueError('Нужен публичный IPv4-адрес.')
+            with self.lock,self.db() as c:
+                u=c.execute('SELECT * FROM users WHERE id=?',(p.get('id'),)).fetchone()
+                if not u:raise ValueError('Профиль не найден.')
+                if c.execute('SELECT 1 FROM routing_pending WHERE address=?',(u['address'],)).fetchone():
+                    return {'route':'blocked','reason':'Применяется режим; прежние соединения сбрасываются.'}
+                try:geo=routing.load(c)
+                except (ValueError,TypeError):geo=None
+                if u['routing']=='ru_split' and not geo:return {'route':'blocked','reason':'Нет исправной RU-базы.'}
+                if not self.routing_status(c,self.settings(c))['cascade_enabled']:
+                    return {'route':'ru','reason':'Каскад глобально выключен: разрешён прямой выход через RU.'}
+                if u['routing']=='cascade':return {'route':'cascade','reason':'Для профиля выбран полный каскад.'}
+                network=next((x for x in geo['networks'] if address in ipaddress.ip_network(x)),None)
+                return {'route':'ru' if network else 'cascade','reason':'RU-сеть '+network if network else 'Адрес не входит в RU-базу.'}
         if op=='migration_ready':
             actual=subprocess.check_output([BINARY,'show',INTERFACE,'public-key'],text=True,timeout=5).strip()
             port=subprocess.check_output([BINARY,'show',INTERFACE,'listen-port'],text=True,timeout=5).strip()
@@ -209,12 +326,12 @@ class Controller:
         if op=='migration_sample':
             with self.lock:self.collect()
             return {'ok':True}
-        with self.lock,mutation() if op!='key' else nullcontext(),self.db() as c:
+        with (self.geo_lock if op=='geo_rollback' else nullcontext()),self.lock,mutation() if op!='key' else nullcontext(),self.db() as c:
             s=self.settings(c);u=c.execute('SELECT * FROM users WHERE id=?',(p.get('id'),)).fetchone()
             if op=='key':
                 if not u:raise ValueError('Ключ не найден')
                 return {'conf':self.config(u,s),'filename':profile_filename(u['name'],u['id']),'enabled':self.allowed(u,s)}
-            if op not in ('create','toggle','rotate','limits','delete','global'):raise ValueError('Неизвестная операция')
+            if op not in ('create','toggle','rotate','limits','delete','global','routing','geo_rollback'):raise ValueError('Неизвестная операция')
             # Take a final sample before removing/resetting a peer and its counters.
             if not self.test:self.collect()
             if op=='create':
@@ -224,14 +341,32 @@ class Controller:
                 addresses={r[0] for r in c.execute('SELECT address FROM users')}
                 if len(addresses)>=100:raise ValueError('Не больше 100 ключей')
                 address=next(v for v in range(2,255) if v not in addresses);uid='u_'+secrets.token_hex(6);private=key()
-                c.execute('INSERT INTO users(id,name,grp,private,public,psk,address,enabled,created) VALUES(?,?,?,?,?,?,?,1,?)',
-                          (uid,name.strip(),group,private,public_key(private),key(),address,int(time.time())))
+                mode=routing.policy(p.get('routing','ru_split'))
+                c.execute('INSERT INTO users(id,name,grp,private,public,psk,address,enabled,created,routing) VALUES(?,?,?,?,?,?,?,1,?,?)',
+                          (uid,name.strip(),group,private,public_key(private),key(),address,int(time.time()),mode))
+                self.queue_routing_reset(c,address)
+            elif op=='geo_rollback':
+                previous=routing.load(c,'routing_previous')
+                if not previous:raise ValueError('Нет предыдущей исправной RU-базы.')
+                try:current=routing.load(c)
+                except (ValueError,TypeError):current=None
+                routing.put(c,'routing_geo',previous)
+                if current:routing.put(c,'routing_previous',current)
+                else:c.execute("DELETE FROM settings WHERE k='routing_previous'")
+                routing.put(c,'routing_checked',int(time.time()));routing.put(c,'routing_error','')
+                routing.put(c,'routing_hold',True)
+                self.queue_routing_reset(c)
             elif op=='global':
                 if type(p.get('paused')) is not bool:raise ValueError('Неверное состояние')
                 c.execute("UPDATE settings SET v=? WHERE k='paused'",(json.dumps(p['paused']),))
             else:
                 if not u:raise ValueError('Ключ не найден')
-                if op=='toggle':
+                if op=='routing':
+                    mode=routing.policy(p.get('routing'))
+                    if mode!=u['routing']:
+                        c.execute('UPDATE users SET routing=? WHERE id=?',(mode,u['id']))
+                        self.queue_routing_reset(c,u['address'])
+                elif op=='toggle':
                     if type(p.get('enabled')) is not bool:raise ValueError('Неверное состояние')
                     c.execute('UPDATE users SET enabled=? WHERE id=?',(p['enabled'],u['id']))
                     if not p['enabled']:c.execute('DELETE FROM samples WHERE id=?',(u['id'],))
@@ -240,6 +375,7 @@ class Controller:
                     c.execute('DELETE FROM samples WHERE id=?',(u['id'],))
                 elif op=='delete':
                     if p.get('confirm_name')!=u['name']:raise ValueError('Введи точное имя пользователя')
+                    self.queue_routing_reset(c,u['address'])
                     for table in ('users','samples','days'):c.execute('DELETE FROM '+table+' WHERE id=?',(u['id'],))
                 elif op=='limits':
                     quota=p.get('quota_gb');expires=p.get('expires','');enforce=p.get('enforce')
@@ -250,12 +386,13 @@ class Controller:
             if op=='global' and p['paused']:c.execute('DELETE FROM samples')
             # Commit desired state first: collector reapplies it if the service is interrupted.
             c.commit()
+            from backup_notify import changed
+            changed('awg')
             try:self.apply(c)
             except (OSError,subprocess.SubprocessError):
                 LOG.error('AmneziaWG configuration sync failed')
+                self.routing_error='Применение настроек AWG не подтверждено; служба повторит попытку.'
                 return {'ok':True,'notice':'Изменения сохранены. Применение к VPN пока не подтверждено; служба повторит попытку.'}
-        from backup_notify import changed
-        changed('awg')
         return {'ok':True}
 
 
@@ -280,6 +417,7 @@ def serve(controller):
     path='/run/relay-awg-control/control.sock';Path(path).unlink(missing_ok=True)
     server=Server(path,Handler);os.chmod(path,0o660);os.chown(path,0,grp.getgrnam('relayadmin').gr_gid)
     threading.Thread(target=server.serve_forever,daemon=True).start()
+    threading.Thread(target=controller.geo_worker,daemon=True).start()
     while True:
         try:
             with controller.lock:controller.collect()

@@ -4,11 +4,31 @@ let state=null, busy=false, downloadURL=null, selected=null;
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const bytes=n=>{if(n===null||n===undefined)return '—';if(!n)return '0 Б';const a=['Б','КБ','МБ','ГБ','ТБ'],i=Math.max(0,Math.min(4,Math.floor(Math.log(n)/Math.log(1024))));return (n/1024**i).toLocaleString('ru-RU',{maximumFractionDigits:1})+' '+a[i];};
 const date=t=>t?new Intl.DateTimeFormat('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(t*1000)):'—';
-function status(u){if(!u.enabled)return 'Ⅱ Приостановлен';if(state.paused)return 'Ⅱ Всё на паузе';if(!u.allowed)return '× '+u.reason;if(!state.telemetry_ok)return '? Нет свежих данных';return u.online?'● Онлайн':'○ Офлайн';}
+function status(u){if(!u.enabled)return 'Ⅱ Приостановлен';if(state.paused)return 'Ⅱ Всё на паузе';if(!u.allowed)return '× '+u.reason;if(u.routing_pending)return '↻ Применяется маршрут';if(u.routing==='ru_split'&&state.routing&&!state.routing.ready)return '× Нет исправной RU-базы';if(!state.telemetry_ok)return '? Нет свежих данных';return u.online?'● Онлайн':'○ Офлайн';}
 function graph(history){const days=[];for(let i=13;i>=0;i--){const day=new Date(Date.now()+6*3600000-i*86400000).toISOString().slice(0,10),r=history.find(x=>x.day===day);days.push({day,n:r?r.up+r.down:0});}const max=Math.max(1,...days.map(x=>x.n));return '<h4>// Трафик за 14 дней</h4><div class="hy-bars" role="img" aria-label="Трафик по дням">'+days.map(x=>`<div class="hy-bar hy-h${Math.max(1,Math.round(x.n/max*18))}" title="${x.day}: ${bytes(x.n)}"></div>`).join('')+`</div><div class="hy-legend"><span>${days[0].day}</span><span>${days[13].day}</span></div>`;}
 function message(s){$('#message').textContent=s;}
 async function api(path,p){const r=await fetch('/control/api/awg/'+path,{method:p?'POST':'GET',headers:p?{'Content-Type':'application/json','X-CSRF-Token':csrf}:{},body:p?JSON.stringify(p):undefined});let d;try{d=await r.json();}catch{throw Error('Служба временно недоступна');}if(!r.ok)throw Error(d.error||'Запрос не выполнен');return d;}
+const routeLabel=mode=>mode==='ru_split'?'Российские IP через RU, остальное через Норвегию':'Всё через Норвегию';
+function routeBadge(u){
+let label=u.routing==='ru_split'?'RU + EU':'EU',kind=u.routing==='ru_split'?'split':'eu',description=routeLabel(u.routing);
+if(state.routing?.cascade_enabled===false){label='RU';kind='direct';description='Каскад выключен: прямой выход через RU';}
+if(u.routing==='ru_split'&&state.routing&&!state.routing.ready){label='БЛОК';kind='blocked';description='Нет исправной RU-базы: соединения профиля заблокированы';}
+return `<span class="awg-route awg-route-${kind}" title="${esc(description)}" aria-label="${esc(description)}">${label}</span>`;
+}
+const routeOptions=mode=>['ru_split','cascade'].map(x=>`<option value="${x}" ${x===mode?'selected':''}>${routeLabel(x)}</option>`).join('');
+function renderRouting(){
+const r=state.routing;
+$('#geo-update').disabled=busy||!r;$('#geo-rollback').disabled=busy||!r?.can_rollback;
+$('#routing-status').textContent=!r?'Нет данных о RU-базе':[
+ r.ready?`${r.count.toLocaleString('ru-RU')} RU-сетей · база от ${date(r.fetched)}`:'Нет исправной RU-базы: раздельные профили заблокированы',
+ r.checked?'Проверено '+date(r.checked):'Обновления проверяются автоматически раз в сутки',
+ r.auto_paused?'После отката автообновление приостановлено до ручного обновления':'',
+ r.cascade_enabled?'Каскад включён':'Каскад глобально выключен: разрешён прямой выход через RU',
+ r.error||''
+].filter(Boolean).join('. ');
+}
 function render(){
+renderRouting();
 const u=state.users.find(x=>x.id===selected)||state.users[0];selected=u?.id||null;
 $('#address').textContent=state.host+':'+state.port+' / '+state.users.length+' пользователей';
 $('#global').textContent=state.paused?'▶ Включить всё':'Ⅱ Приостановить всё';$('#global').disabled=busy;$('#new').disabled=busy;
@@ -16,21 +36,31 @@ $('#empty').hidden=state.users.length!==0;$('#online').textContent=state.telemet
 $('#traffic').textContent=bytes(state.users.reduce((n,x)=>n+x.today,0));$('#warnings').textContent=state.users.filter(x=>x.reason).length;
 $('#updated').textContent=state.telemetry_ok?'Обновлено '+date(state.updated):'Нет свежих данных';
 $('#alerts').innerHTML=state.telemetry_ok?'':'<div class="fc-alert">Нет свежих данных AmneziaWG. Онлайн временно неизвестен; показаны последние сохранённые счётчики.</div>';
-$('#users').innerHTML=state.users.map(x=>`<button class="fc-user" data-user="${x.id}" aria-pressed="${selected===x.id}"><span class="fc-user-top"><span class="fc-user-name">${esc(x.name)}</span><span class="fc-status ${x.online&&state.telemetry_ok?'':'off'}">${esc(status(x))}</span></span><span class="fc-user-sub"><span>${esc(x.grp)} · ${esc(x.address)}</span><span>↓↑ ${bytes(x.up+x.down)}</span></span><span class="fc-user-sub">Последний обмен ключами: ${date(x.last)}</span></button>`).join('');
+$('#users').innerHTML=state.users.map(x=>`<button class="fc-user" data-user="${x.id}" aria-pressed="${selected===x.id}"><span class="fc-user-top"><span class="awg-user-title"><span class="fc-user-name">${esc(x.name)}</span>${routeBadge(x)}</span><span class="fc-status ${x.online&&state.telemetry_ok?'':'off'}">${esc(status(x))}</span></span><span class="fc-user-sub"><span>${esc(x.grp)} · ${esc(x.address)}</span><span>↓↑ ${bytes(x.up+x.down)}</span></span><span class="fc-user-sub">Последний обмен ключами: ${date(x.last)}</span></button>`).join('');
 if(!u){$('#detail').innerHTML='<h3>Выдай первый ключ</h3>';return;}
-$('#detail').innerHTML=`<div class="fc-label">AMNEZIAWG 3.1 / USER</div><h3>${esc(u.name)}</h3><p class="fc-status ${u.online&&state.telemetry_ok?'':'off'}">${esc(status(u))}</p><dl><dt>Группа</dt><dd>${esc(u.grp)}</dd><dt>Сервер</dt><dd>${esc(state.host)}:${state.port} / UDP</dd><dt>Адрес в VPN</dt><dd>${esc(u.address)}</dd><dt>Сегодня</dt><dd>${bytes(u.today)}</dd><dt>За текущий месяц</dt><dd>${bytes(u.month)}</dd><dt>Всего</dt><dd>${bytes(u.up+u.down)}</dd><dt>Получено ↓ / отправлено ↑</dt><dd>${bytes(u.down)} / ${bytes(u.up)}</dd><dt>Последний обмен ключами</dt><dd>${date(u.last)}</dd><dt>Создан</dt><dd>${date(u.created)}</dd><dt>Действует до</dt><dd>${u.expires?date(u.expires):'Без срока'}</dd><dt>Лимит за весь срок ключа</dt><dd>${u.quota?bytes(u.quota):'Без лимита'}</dd><dt>При превышении</dt><dd>${u.enforce?'Отключать':'Предупреждать'}</dd></dl>${u.reason?'<p class="fc-risk">'+esc(u.reason)+'</p>':''}<div class="fc-actions">${[['key','QR / .conf'],['toggle',u.enabled?'Приостановить':'Включить'],['limits','Срок / лимит'],['rotate','Заменить ключ'],['delete','Удалить профиль']].map(([op,label])=>`<button class="fc-button ${op==='delete'?'fc-risk':''}" data-op="${op}" data-id="${u.id}" ${busy?'disabled':''}>${label}</button>`).join('')}</div>${graph(u.history)}<p class="fc-muted">Онлайн — обмен ключами за последние 3 минуты. После отключения статус меняется с задержкой. Один профиль не показывает точное число устройств.</p>`;
+$('#detail').innerHTML=`<div class="fc-label">AMNEZIAWG 3.1 / USER</div><h3 class="awg-user-title">${esc(u.name)} ${routeBadge(u)}</h3><p class="fc-status ${u.online&&state.telemetry_ok?'':'off'}">${esc(status(u))}</p><dl><dt>Группа</dt><dd>${esc(u.grp)}</dd><dt>Сервер</dt><dd>${esc(state.host)}:${state.port} / UDP</dd><dt>Адрес в VPN</dt><dd>${esc(u.address)}</dd><dt>Маршрутизация</dt><dd>${routeLabel(u.routing)}${u.routing_pending?' · применяется, соединения временно закрыты':''}</dd><dt>Сегодня</dt><dd>${bytes(u.today)}</dd><dt>За текущий месяц</dt><dd>${bytes(u.month)}</dd><dt>Всего</dt><dd>${bytes(u.up+u.down)}</dd><dt>Получено ↓ / отправлено ↑</dt><dd>${bytes(u.down)} / ${bytes(u.up)}</dd><dt>Последний обмен ключами</dt><dd>${date(u.last)}</dd><dt>Создан</dt><dd>${date(u.created)}</dd><dt>Действует до</dt><dd>${u.expires?date(u.expires):'Без срока'}</dd><dt>Лимит за весь срок ключа</dt><dd>${u.quota?bytes(u.quota):'Без лимита'}</dd><dt>При превышении</dt><dd>${u.enforce?'Отключать':'Предупреждать'}</dd></dl>${u.reason?'<p class="fc-risk">'+esc(u.reason)+'</p>':''}<div class="fc-actions">${[['key','QR / .conf'],['toggle',u.enabled?'Приостановить':'Включить'],['routing','Маршрутизация'],['route_check','Проверить IP'],['limits','Срок / лимит'],['rotate','Заменить ключ'],['delete','Удалить профиль']].map(([op,label])=>`<button class="fc-button ${op==='delete'?'fc-risk':''}" data-op="${op}" data-id="${u.id}" ${busy?'disabled':''}>${label}</button>`).join('')}</div>${graph(u.history)}<p class="fc-muted">Онлайн — обмен ключами за последние 3 минуты. После отключения статус меняется с задержкой. Один профиль не показывает точное число устройств.</p>`;
 }
-async function refresh(){try{const next=await api('state');if(selectNew){const previous=new Set(state?.users.map(u=>u.id)||[]);selected=next.users.find(u=>!previous.has(u.id))?.id||selected;selectNew=false;}state=next;render();}catch(e){message(e.message);if(state){state.telemetry_ok=false;state.users.forEach(u=>u.online=false);render();}$('#new').disabled=true;$('#global').disabled=true;}}
+async function refresh(){try{const next=await api('state');if(selectNew){const previous=new Set(state?.users.map(u=>u.id)||[]);selected=next.users.find(u=>!previous.has(u.id))?.id||selected;selectNew=false;}state=next;render();}catch(e){message(e.message);if(state){state.telemetry_ok=false;state.users.forEach(u=>u.online=false);render();}$('#new').disabled=true;$('#global').disabled=true;$('#geo-update').disabled=true;$('#geo-rollback').disabled=true;}}
 let selectNew=false;
 function close(){if(downloadURL){URL.revokeObjectURL(downloadURL);downloadURL=null;}$('#dialog').close();$('#dialogbody').replaceChildren();}
 function modal(html){close();$('#dialogbody').innerHTML=html;$('#dialog').showModal();}
 async function action(p){if(busy)return;busy=true;if(state)render();try{const d=await api('action',p);selectNew=p.op==='create';message(d.notice||'Сохранено');close();}catch(e){message(e.message);}finally{busy=false;await refresh();}}
+$('#geo-update').onclick=()=>action({op:'geo_update'});
+$('#geo-rollback').onclick=()=>{if(confirm('Вернуть предыдущую RU-базу? Соединения раздельных профилей будут переподключены.'))action({op:'geo_rollback'});};
 $('#cancel').onclick=close;
 $('#dialog').addEventListener('cancel',e=>{e.preventDefault();close();});
-$('#new').onclick=()=>{modal('<h2>Выдать ключ</h2><form id="create"><label>Имя<input name="name" maxlength="40" required autocomplete="off"></label><label>Группа<select name="group"><option>Личное</option><option>Семья</option><option>Друзья</option></select></label><button class="fc-button fc-primary">Создать</button></form>');$('#create').onsubmit=e=>{e.preventDefault();const f=new FormData(e.target);action({op:'create',name:f.get('name'),group:f.get('group')});};};
+$('#new').onclick=()=>{modal('<h2>Выдать ключ</h2><form id="create"><label>Имя<input name="name" maxlength="40" required autocomplete="off"></label><label>Группа<select name="group"><option>Личное</option><option>Семья</option><option>Друзья</option></select></label><label>Маршрутизация<select name="routing">'+routeOptions('ru_split')+'</select></label><button class="fc-button fc-primary">Создать</button></form>');$('#create').onsubmit=e=>{e.preventDefault();const f=new FormData(e.target);action({op:'create',name:f.get('name'),group:f.get('group'),routing:f.get('routing')});};};
 $('#global').onclick=()=>{if(confirm(state.paused?'Включить все ключи?':'Приостановить подключения всех пользователей?'))action({op:'global',paused:!state.paused});};
 $('#users').onclick=e=>{const b=e.target.closest('button[data-user]');if(b&&state){selected=b.dataset.user;render();}};
 $('#detail').onclick=async e=>{const b=e.target.closest('button[data-op]');if(!b||busy)return;const u=state.users.find(v=>v.id===b.dataset.id);if(!u)return;const op=b.dataset.op;
+if(op==='routing'){
+modal(`<h2>Маршрутизация: ${esc(u.name)}</h2><form id="routing-form"><label>Выход в интернет<select name="routing">${routeOptions(u.routing||'cascade')}</select></label><p class="fc-muted">Ключ и конфиг сохранятся. Прежние соединения этого профиля будут сброшены; звонок или загрузку может понадобиться повторить.</p><button class="fc-button fc-primary">Применить</button></form>`);
+$('#routing-form').onsubmit=e=>{e.preventDefault();action({op,id:u.id,routing:e.target.elements.routing.value});};return;
+}
+if(op==='route_check'){
+modal(`<h2>Проверить маршрут: ${esc(u.name)}</h2><form id="route-check"><label>IPv4 назначения<input name="address" placeholder="Например, 1.1.1.1" required maxlength="15" autocomplete="off"></label><button class="fc-button">Проверить</button><p id="route-result" role="status"></p></form>`);
+$('#route-check').onsubmit=async e=>{e.preventDefault();const out=$('#route-result');try{const d=await api('action',{op,id:u.id,address:e.target.elements.address.value});out.textContent=({ru:'Выход через RU',cascade:'Выход через Норвегию',blocked:'Соединение заблокировано'}[d.route]||'Неизвестный маршрут')+'. '+d.reason;}catch(error){out.textContent=error.message;}};return;
+}
 if(op==='toggle')return action({op,id:u.id,enabled:!u.enabled});
 if(op==='rotate'){if(confirm('Заменить ключ '+u.name+'? Прежний конфиг перестанет работать.'))return action({op,id:u.id});return;}
 if(op==='delete'){const name=prompt('Для удаления введи точное имя: '+u.name);if(name!==null)return action({op,id:u.id,confirm_name:name});return;}

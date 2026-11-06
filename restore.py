@@ -31,6 +31,8 @@ def restore_files(files,paths):
     cascade=files/'cascade'
     if cascade.exists():
         from cascade_network import validate_state,public_key,run
+        from cascade_network import validate_transport
+        if (cascade/'transport.json').exists(): validate_transport(json.loads((cascade/'transport.json').read_text()))
         value=validate_state(json.loads((cascade/'state.json').read_text()))
         if value.get('host'):
             private=public_key((cascade/'private.key').read_text().strip())
@@ -40,7 +42,7 @@ def restore_files(files,paths):
     mappings=[('telegram/users.json',paths['users'],'root','root',0o600),('telegram/usage.json',paths['usage'],'tproxy','relayadmin',0o640),('owner/auth.json',paths['owner']/'auth.json','relayadmin','relayadmin',0o600),('owner/panel.sqlite3',paths['owner']/'panel.sqlite3','relayadmin','relayadmin',0o600),('hysteria/hy2.sqlite3',paths['hy2']/'hy2.sqlite3','root','root',0o600)]
     if paths.get('awg'):mappings.append(('amnezia/awg.sqlite3',paths['awg']/'awg.sqlite3','root','root',0o600))
     if paths.get('cascade'):
-        for name in ('state.json','private.key','public.key'):
+        for name in ('state.json','private.key','public.key','transport.json'):
             mappings.append(('cascade/'+name,paths['cascade']/name,'root','root',0o600))
     for name,target,user,group,mode in mappings:
         source=files/name
@@ -107,6 +109,8 @@ def restore_main(argv=None, *, confirmed=False):
                 subprocess.run(['systemctl','stop',name],check=True,capture_output=True)
             paths=layout();restore_files(temp/'files',paths)
             if (temp/'files/cascade/state.json').exists():
+                from cascade_network import install_transport_runtime
+                install_transport_runtime()
                 subprocess.run(['systemctl','restart','relay-cascade'],check=True)
             if redirects:
                 pending=caddy.with_suffix('.restore');pending.write_text(restored_caddy);pending.chmod(0o644)

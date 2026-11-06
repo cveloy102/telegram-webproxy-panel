@@ -273,7 +273,7 @@ def packages():
     print('Устанавливаю системные пакеты. Подробности: '+str(LOG))
     env={**os.environ,'DEBIAN_FRONTEND':'noninteractive'}
     run('apt-get','update',env=env)
-    run('apt-get','-o','Dpkg::Options::=--force-confold','install','-y','--no-install-recommends','ca-certificates','curl','build-essential','golang-go','libssl-dev','zlib1g-dev','nftables','iproute2','wireguard-tools','patch','caddy','python3-flask','python3-qrcode','python3-pil','gunicorn','python3-yaml','age','rclone',env=env)
+    run('apt-get','-o','Dpkg::Options::=--force-confold','install','-y','--no-install-recommends','ca-certificates','curl','build-essential','golang-go','libssl-dev','zlib1g-dev','nftables','iproute2','wireguard-tools','conntrack','patch','caddy','python3-flask','python3-qrcode','python3-pil','gunicorn','python3-yaml','age','rclone',env=env)
 
 def users():
     import pwd

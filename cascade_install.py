@@ -100,6 +100,8 @@ WantedBy=multi-user.target
 '''
     # sysctl on the owned interface requires /proc/sys; no host-wide sysctl is written by this daemon.
     setup.write('/etc/systemd/system/relay-cascade.service', unit)
+    from cascade_network import install_transport_runtime
+    install_transport_runtime()
     for name in ('mtproxy', 'hysteria-server', 'amneziawg-server'):
         folder = Path('/etc/systemd/system') / (name + '.service.d')
         setup.directory(folder)

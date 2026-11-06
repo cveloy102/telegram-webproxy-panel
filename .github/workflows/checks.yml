@@ -34,7 +34,7 @@ jobs:
       - name: Python and shell checks
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-flask python3-qrcode python3-pil python3-yaml age rclone shellcheck wireguard-tools nftables iproute2 curl
+          sudo apt-get install -y python3-flask python3-qrcode python3-pil python3-yaml age rclone shellcheck wireguard-tools nftables iproute2 curl conntrack
           bash -n install.sh
           shellcheck install.sh
           python3 -m compileall -q installer.py cascade_install.py manage.py restore.py recovery_wizard.py units.py amnezia_install.py hysteria_install.py backup_install.py panel tests

@@ -12,7 +12,7 @@ import threading
 import time
 
 from cascade_network import (ROOT, INTERFACE, ENTRY, TABLE, PRIORITIES, run, public_key, endpoint,
-                             entry_firewall, replace_table, setup_interface, policy_routes, remove_runtime, validate_state)
+                             entry_firewall, replace_table, setup_interface, policy_routes, remove_runtime, validate_state, tunnel_tool)
 from migration_state import mutation
 
 
@@ -70,7 +70,7 @@ class Controller:
                                  'port': value.get('port', 51821)}
         if result['configured']:
             try:
-                rows = run('wg', 'show', INTERFACE, 'latest-handshakes').stdout.splitlines()
+                rows = run(tunnel_tool(self.root), 'show', INTERFACE, 'latest-handshakes').stdout.splitlines()
                 result['handshake'] = max((int(row.split()[1]) for row in rows), default=0)
             except Exception:
                 # Status must remain readable when the tunnel is down.
