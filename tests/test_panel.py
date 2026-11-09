@@ -23,6 +23,44 @@ import app as panel
 from helper import Controller, atomic
 
 class PanelTests(unittest.TestCase):
+    def test_rename_all_protocols_requires_owner_csrf_and_forwards_exact_id(self):
+        from unittest.mock import patch
+        url='https://proxy.example.com'
+        payload={'op':'rename','id':'u_one','name':'Новое <имя>'}
+        for route in ('action','awg/action','hy2/action'):
+            self.assertEqual(self.client.post('/control/api/'+route,base_url=url,json=payload).status_code,403)
+        self.setup_owner()
+        page=self.client.get('/control/amnezia',base_url=url)
+        token=re.search(r'name="csrf" content="([^"]+)"',page.text).group(1)
+        for route,target in [('action','app.helper'),('awg/action','awg_routes.helper'),('hy2/action','hy2_routes.helper')]:
+            with patch(target,return_value={'ok':True}) as helper,patch('app.backup_changed'):
+                self.assertEqual(self.client.post('/control/api/'+route,base_url=url,json=payload).status_code,403)
+                helper.assert_not_called()
+                result=self.client.post('/control/api/'+route,base_url=url,json=payload,
+                    headers={'Origin':url,'X-CSRF-Token':token})
+                self.assertEqual(result.status_code,200)
+                helper.assert_called_once_with(payload)
+
+    def test_telegram_rename_never_applies_or_changes_connection_keys(self):
+        from unittest.mock import Mock
+        folder=root/'rename-controller';folder.mkdir(exist_ok=True)
+        original={'host':'proxy.example.com','paused':False,'users':[
+            {'id':'default','name':'Прежнее имя','group':'Личное','secret':'a'*32,'enabled':True,'created':1},
+            {'id':'other','name':'Другой','group':'Семья','secret':'b'*32,'enabled':True,'created':2}]}
+        atomic(folder/'users.json',original)
+        apply=Mock(side_effect=AssertionError('Rename must not apply network settings'))
+        controller=Controller(folder,apply=apply)
+        controller.call({'op':'rename','id':'default','name':'  Новое <имя>  '})
+        state=controller.read();apply.assert_not_called()
+        self.assertEqual(state['users'][0],{**original['users'][0],'name':'Новое <имя>'})
+        self.assertEqual(state['users'][1],original['users'][1])
+        self.assertEqual(controller.call({'op':'key','id':'default'})['secret'],'a'*32)
+        for name in ('','  ','x'*41,'bad\nname',None,{},True):
+            with self.subTest(name=name),self.assertRaises(ValueError):
+                controller.call({'op':'rename','id':'default','name':name})
+        with self.assertRaises(ValueError):controller.call({'op':'rename','id':'missing','name':'Имя'})
+        self.assertEqual(controller.read(),state)
+
     def test_awg_routing_actions_require_owner_csrf_and_allowlist(self):
         from unittest.mock import patch
         url='https://proxy.example.com'
@@ -121,6 +159,19 @@ class PanelTests(unittest.TestCase):
             self.assertEqual(response.json['filename'],'u_one.conf')
             self.assertTrue(response.json['qr'])
             self.assertEqual(response.headers['Cache-Control'],'no-store')
+        from test_amnezia_export import CONF,decode
+        with patch('awg_routes.helper',return_value={'conf':CONF,'filename':'Drug.conf','name':'Друг','enabled':True}) as helper:
+            response=self.client.post('/control/api/awg/key',base_url=url,json={'id':'u_one','format':'amnezia'},headers=headers)
+            self.assertEqual(response.status_code,200)
+            self.assertEqual(response.json['filename'],'Drug.vpn')
+            self.assertEqual(response.headers['Cache-Control'],'no-store')
+            self.assertEqual(decode(response.json['vpn'])['description'],'Друг')
+            self.assertTrue(response.json['qr'])
+            helper.assert_called_with({'op':'key','id':'u_one'})
+            helper.reset_mock()
+            response=self.client.post('/control/api/awg/key',base_url=url,json={'id':'u_one','format':'shell'},headers=headers)
+            self.assertEqual(response.status_code,400)
+            helper.assert_not_called()
         with patch('awg_routes.helper',side_effect=OSError):
             self.assertEqual(self.client.get('/control/api/awg/state',base_url=url).status_code,503)
         with self.client.get('/control/static/amnezia.js',base_url=url) as asset:self.assertEqual(asset.status_code,200)

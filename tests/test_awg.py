@@ -24,6 +24,21 @@ def fake_public(private):return base64.b64encode(hashlib.sha256(private.encode()
 
 
 class AmneziaTests(unittest.TestCase):
+    def test_rename_preserves_peer_and_history_without_applying_network(self):
+        before=self.user();conf=self.c.call({'op':'key','id':self.uid})['conf']
+        with patch.object(self.c,'apply') as apply,patch.object(self.c,'collect') as collect:
+            self.c.call({'op':'rename','id':self.uid,'name':'  Новое <имя>  '})
+            apply.assert_not_called();collect.assert_not_called()
+        after=self.user()
+        self.assertEqual(after.pop('name'),'Новое <имя>');before.pop('name')
+        self.assertEqual(after,before)
+        self.assertEqual(self.c.call({'op':'key','id':self.uid})['conf'],conf)
+        for name in ('','   ','x'*41,'bad\nname',None,{},True):
+            with self.subTest(name=name),self.assertRaises(ValueError):
+                self.c.call({'op':'rename','id':self.uid,'name':name})
+        with self.assertRaises(ValueError):self.c.call({'op':'rename','id':'missing','name':'Имя'})
+        self.assertEqual(self.user()['name'],'Новое <имя>')
+
     def test_download_name_is_readable_and_safe_for_vpn_clients(self):
         for name,expected in [('Павел телефон','Pavel-telefon.conf'),('Друг','Drug.conf'),('CON','CON-VPN.conf'),('café / PC','cafe-PC.conf')]:
             with self.subTest(name=name):self.assertEqual(profile_filename(name,'u_123456789abc'),expected)
@@ -187,7 +202,7 @@ class AmneziaTests(unittest.TestCase):
         self.assertNotEqual(before,control.signature())
         before=control.signature();self.c.call({'op':'rotate','id':self.uid})
         self.assertNotEqual(before,control.signature())
-        before=control.signature();self.c.call({'op':'routing','id':self.uid,'routing':'cascade'})
+        before=control.signature();self.c.call({'op':'routing','id':self.uid,'routing':'ru_split' if self.user()['routing']=='cascade' else 'cascade'})
         self.assertNotEqual(before,control.signature())
 
     def test_network_units_and_public_destination_isolation(self):

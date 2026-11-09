@@ -4,6 +4,7 @@ import io
 import json
 import socket
 import qrcode
+from amnezia_export import vpn_key
 from flask import abort,jsonify,redirect,render_template,request
 
 
@@ -34,7 +35,7 @@ def register(app,authorized,csrf):
     @app.post('/control/api/awg/action')
     def awg_action():
         p=request.get_json(silent=True)
-        if not isinstance(p,dict) or p.get('op') not in ('create','toggle','rotate','limits','delete','global','routing','geo_update','geo_rollback','route_check'):abort(400)
+        if not isinstance(p,dict) or p.get('op') not in ('create','rename','toggle','rotate','limits','delete','global','routing','geo_update','geo_rollback','route_check'):abort(400)
         try:return jsonify(helper(p))
         except (OSError,ValueError) as e:return jsonify(error=str(e)),400
 
@@ -42,10 +43,17 @@ def register(app,authorized,csrf):
     def awg_key():
         p=request.get_json(silent=True)
         if not isinstance(p,dict):abort(400)
+        target=p.get('format','awg')
+        if target not in ('awg','amnezia'):abort(400)
         try:
             result=helper({'op':'key','id':p.get('id')})
+            if target=='amnezia':
+                native_name=result['filename'].removesuffix('.conf')
+                result={**result,'vpn':vpn_key(result['conf'],result.get('name',native_name)),'filename':native_name+'.vpn'}
             image=qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_L,box_size=6,border=4)
-            image.add_data(result['conf']);image.make(fit=True)
+            image.add_data(result.get('vpn',result['conf']));image.make(fit=True)
             buffer=io.BytesIO();image.make_image().save(buffer,format='PNG')
-            return jsonify(**result,qr=base64.b64encode(buffer.getvalue()).decode())
+            response=jsonify(**result,qr=base64.b64encode(buffer.getvalue()).decode())
+            response.headers['Cache-Control']='no-store'
+            return response
         except (OSError,ValueError) as e:return jsonify(error=str(e)),400

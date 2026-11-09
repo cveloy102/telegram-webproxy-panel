@@ -25,6 +25,8 @@ class RoutingTests(unittest.TestCase):
                 ('awg_control.public_key',lambda x:base64.b64encode(hashlib.sha256(x.encode()).digest()).decode()),
                 ('migration_state.ROOT',self.root/'migration')):
             p=patch(target,value);p.start();self.addCleanup(p.stop)
+        p=patch('awg_control.cascade_state',return_value={'enabled':True,'exit_public_key':'test-key'})
+        self.cascade_state=p.start();self.addCleanup(p.stop)
         p=patch('backup_notify.changed');self.notify=p.start();self.addCleanup(p.stop)
         self.c=awg_control.Controller(self.root/'awg',{'awg_domain':'vpn.example.com','awg_port':51820},test=True)
         self.c.call({'op':'create','name':'First','group':'Семья'})
@@ -43,6 +45,24 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(users['New']['routing'],'ru_split')
         users={u['id']:u for u in awg_control.Controller(self.root/'awg',test=True).public()['users']}
         self.assertEqual(users[self.uid]['routing'],'cascade')
+
+    def test_standalone_and_disabled_cascade_are_distinct_and_keep_existing_modes(self):
+        before=self.c.call({'op':'key','id':self.uid})['conf']
+        self.cascade_state.return_value={}
+        state=self.c.public()['routing']
+        self.assertFalse(state['cascade_configured'])
+        self.assertFalse(state['cascade_enabled'])
+        self.assertEqual(state['default'],'cascade')
+        self.c.call({'op':'create','name':'Standalone','group':'Личное'})
+        users={u['name']:u for u in self.c.public()['users']}
+        self.assertEqual(users['Standalone']['routing'],'cascade')
+        self.assertEqual(users['First']['routing'],'ru_split')
+        self.assertEqual(before,self.c.call({'op':'key','id':self.uid})['conf'])
+        self.cascade_state.return_value={'enabled':False,'exit_public_key':'test-key'}
+        state=self.c.public()['routing']
+        self.assertTrue(state['cascade_configured'])
+        self.assertFalse(state['cascade_enabled'])
+        self.assertEqual(state['default'],'ru_split')
 
     def test_switch_is_isolated_and_never_changes_keys_or_counters(self):
         self.c.call({'op':'create','name':'Second','group':'Друзья','routing':'cascade'})

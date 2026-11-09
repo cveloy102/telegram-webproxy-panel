@@ -10,6 +10,24 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'panel'))
 from hy2_control import Controller, TZ
 
 class HysteriaTests(unittest.TestCase):
+    def test_rename_keeps_auth_and_traffic_without_kicking_connections(self):
+        with self.c.db() as c:
+            before=dict(c.execute('SELECT * FROM users WHERE id=?',('default',)).fetchone())
+        uri=self.c.call({'op':'key','id':'default'})['uri']
+        with patch.object(self.c,'stats_api') as stats,patch.object(self.c,'apply_settings') as apply,patch('backup_notify.changed'):
+            self.c.call({'op':'rename','id':'default','name':'  Новый телефон  '})
+            stats.assert_not_called();apply.assert_not_called()
+        with self.c.db() as c:
+            after=dict(c.execute('SELECT * FROM users WHERE id=?',('default',)).fetchone())
+        self.assertEqual(after.pop('name'),'Новый телефон');before.pop('name')
+        self.assertEqual(after,before)
+        self.assertEqual(self.c.authenticate('original-secret'),{'ok':True,'id':'default'})
+        self.assertEqual(uri.split('#')[0],self.c.call({'op':'key','id':'default'})['uri'].split('#')[0])
+        for name in ('','  ','x'*41,'bad\nname',None,{},True):
+            with self.subTest(name=name),self.assertRaises(ValueError):
+                self.c.call({'op':'rename','id':'default','name':name})
+        with self.assertRaises(ValueError):self.c.call({'op':'rename','id':'missing','name':'Имя'})
+
     def test_future_or_stale_sample_is_not_reported_online(self):
         now=1800000000
         self.c.ingest({}, {'default':1},'one',now)

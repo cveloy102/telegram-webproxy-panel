@@ -30,6 +30,11 @@ LOG = logging.getLogger('awg-controller')
 OBFS = ('S1','S2','S3','S4','H1','H2','H3','H4','HeaderProtectionKey')
 
 
+def cascade_state():
+    try:return json.loads(Path('/etc/relay-cascade/state.json').read_text())
+    except (OSError,ValueError):return {}
+
+
 def profile_filename(name, fallback):
     # awg-quick uses the filename as an interface name: ASCII, at most 15 chars.
     name = str(name or '')
@@ -219,13 +224,13 @@ class Controller:
         except (ValueError,TypeError):geo=None
         try:previous=routing.load(c,'routing_previous')
         except (ValueError,TypeError):previous=None
-        try:
-            cascade=json.loads(Path('/etc/relay-cascade/state.json').read_text()).get('enabled') is True
-        except (OSError,ValueError):cascade=False
+        cascade=cascade_state()
+        configured=bool(cascade.get('exit_public_key'))
         return {'source':routing.SOURCE,'ready':bool(geo),'count':len(geo['networks']) if geo else 0,
                 'fetched':geo['fetched'] if geo else 0,'sha256':geo['sha256'] if geo else '',
                 'checked':s.get('routing_checked',0),'error':s.get('routing_error','') or self.routing_error,
-                'can_rollback':bool(previous),'cascade_enabled':cascade,'default':'ru_split',
+                'can_rollback':bool(previous),'cascade_enabled':cascade.get('enabled') is True,
+                'cascade_configured':configured,'default':'ru_split' if configured else 'cascade',
                 'auto_paused':bool(s.get('routing_hold')),
                 'classifier':'geoip-v1','dns_enabled':False}
 
@@ -330,7 +335,16 @@ class Controller:
             s=self.settings(c);u=c.execute('SELECT * FROM users WHERE id=?',(p.get('id'),)).fetchone()
             if op=='key':
                 if not u:raise ValueError('Ключ не найден')
-                return {'conf':self.config(u,s),'filename':profile_filename(u['name'],u['id']),'enabled':self.allowed(u,s)}
+                return {'conf':self.config(u,s),'filename':profile_filename(u['name'],u['id']),'name':u['name'],'enabled':self.allowed(u,s)}
+            if op=='rename':
+                if not u:raise ValueError('Профиль не найден')
+                name=p.get('name')
+                if not isinstance(name,str) or not 1<=len(name.strip())<=40 or any(ord(v)<32 for v in name):raise ValueError('Имя: от 1 до 40 символов')
+                c.execute('UPDATE users SET name=? WHERE id=?',(name.strip(),u['id']))
+                c.commit()
+                from backup_notify import changed
+                changed('awg')
+                return {'ok':True}
             if op not in ('create','toggle','rotate','limits','delete','global','routing','geo_rollback'):raise ValueError('Неизвестная операция')
             # Take a final sample before removing/resetting a peer and its counters.
             if not self.test:self.collect()
@@ -341,7 +355,7 @@ class Controller:
                 addresses={r[0] for r in c.execute('SELECT address FROM users')}
                 if len(addresses)>=100:raise ValueError('Не больше 100 ключей')
                 address=next(v for v in range(2,255) if v not in addresses);uid='u_'+secrets.token_hex(6);private=key()
-                mode=routing.policy(p.get('routing','ru_split'))
+                mode=routing.policy(p.get('routing','ru_split' if cascade_state().get('exit_public_key') else 'cascade'))
                 c.execute('INSERT INTO users(id,name,grp,private,public,psk,address,enabled,created,routing) VALUES(?,?,?,?,?,?,?,1,?,?)',
                           (uid,name.strip(),group,private,public_key(private),key(),address,int(time.time()),mode))
                 self.queue_routing_reset(c,address)
