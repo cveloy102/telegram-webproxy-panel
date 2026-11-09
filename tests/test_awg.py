@@ -187,7 +187,7 @@ class AmneziaTests(unittest.TestCase):
         self.assertNotEqual(before,control.signature())
         before=control.signature();self.c.call({'op':'rotate','id':self.uid})
         self.assertNotEqual(before,control.signature())
-        before=control.signature();self.c.call({'op':'routing','id':self.uid,'routing':'cascade'})
+        before=control.signature();self.c.call({'op':'routing','id':self.uid,'routing':'ru_split' if self.user()['routing']=='cascade' else 'cascade'})
         self.assertNotEqual(before,control.signature())
 
     def test_network_units_and_public_destination_isolation(self):

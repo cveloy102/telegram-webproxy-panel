@@ -121,6 +121,19 @@ class PanelTests(unittest.TestCase):
             self.assertEqual(response.json['filename'],'u_one.conf')
             self.assertTrue(response.json['qr'])
             self.assertEqual(response.headers['Cache-Control'],'no-store')
+        from test_amnezia_export import CONF,decode
+        with patch('awg_routes.helper',return_value={'conf':CONF,'filename':'Drug.conf','name':'Друг','enabled':True}) as helper:
+            response=self.client.post('/control/api/awg/key',base_url=url,json={'id':'u_one','format':'amnezia'},headers=headers)
+            self.assertEqual(response.status_code,200)
+            self.assertEqual(response.json['filename'],'Drug.vpn')
+            self.assertEqual(response.headers['Cache-Control'],'no-store')
+            self.assertEqual(decode(response.json['vpn'])['description'],'Друг')
+            self.assertTrue(response.json['qr'])
+            helper.assert_called_with({'op':'key','id':'u_one'})
+            helper.reset_mock()
+            response=self.client.post('/control/api/awg/key',base_url=url,json={'id':'u_one','format':'shell'},headers=headers)
+            self.assertEqual(response.status_code,400)
+            helper.assert_not_called()
         with patch('awg_routes.helper',side_effect=OSError):
             self.assertEqual(self.client.get('/control/api/awg/state',base_url=url).status_code,503)
         with self.client.get('/control/static/amnezia.js',base_url=url) as asset:self.assertEqual(asset.status_code,200)
