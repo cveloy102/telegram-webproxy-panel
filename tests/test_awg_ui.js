@@ -28,6 +28,13 @@ vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../panel/st
   element('#users').onclick({target:{closest:()=>({dataset:{user:'two'}})}});
   assert.match(element('#detail').innerHTML,/Второй &lt;тест&gt;/);
   assert.match(element('#detail').innerHTML,/Всё через Норвегию/);
+  await element('#detail').onclick({target:{closest:()=>({dataset:{op:'rename',id:'two'}})}});
+  assert.match(element('#dialogbody').innerHTML,/value="Второй &lt;тест&gt;"/);
+  vm.runInContext('globalThis.savedAction=action;action=async p=>{globalThis.renamePayload=p;}',context);
+  element('#rename-form').onsubmit({preventDefault(){},target:{elements:{name:{value:'Новое имя'}}}});
+  assert.equal(context.renamePayload.op,'rename');assert.equal(context.renamePayload.id,'two');
+  assert.equal(context.renamePayload.name,'Новое имя');
+  vm.runInContext('action=savedAction;close()',context);
   response.routing.cascade_enabled=false;
   await vm.runInContext('refresh()',context);
   assert.match(element('#users').innerHTML,/awg-route-direct[^>]*>RU<\/span>/);

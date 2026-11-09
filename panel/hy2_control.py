@@ -249,6 +249,16 @@ class Controller:
                 if s['obfs']: params+='&obfs=salamander&obfs-password='+quote(s['obfs_password'],safe='')
                 uri='hysteria2://'+quote(user['secret'],safe='')+'@'+s['host']+':'+str(s['port'])+'/?'+params+'#'+quote(user['name'],safe='')
                 return {'uri':uri,'host':s['host'],'port':s['port'],'enabled':self.allowed(user,s)}
+            if op=='rename':
+                if not user:raise ValueError('Профиль не найден')
+                name=p.get('name')
+                if not isinstance(name,str) or not 1<=len(name.strip())<=40 or any(ord(v)<32 for v in name):raise ValueError('Имя: от 1 до 40 символов')
+                c.execute('UPDATE users SET name=? WHERE id=?',(name.strip(),user['id']))
+                self.event(c,'rename',user['id'],'Профиль переименован: '+user['name']+' → '+name.strip())
+                c.commit()
+                from backup_notify import changed
+                changed('hysteria')
+                return {'ok':True}
             kick=[]
             if op=='create':
                 name=p.get('name','');group=p.get('group','')

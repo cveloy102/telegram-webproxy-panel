@@ -32,7 +32,7 @@ def register(app,authorized,csrf):
     @app.post('/control/api/hy2/action')
     def hy2_action():
         data=request.get_json(silent=True)
-        if not isinstance(data,dict) or data.get('op') not in ('create','toggle','rotate','limits','global','settings','delete'): abort(400)
+        if not isinstance(data,dict) or data.get('op') not in ('create','rename','toggle','rotate','limits','global','settings','delete'): abort(400)
         try: return jsonify(helper(data))
         except (OSError,ValueError) as e: return jsonify(error=str(e)),400
 

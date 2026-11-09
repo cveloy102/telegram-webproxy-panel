@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="csrf" content="{{csrf}}"><title>RELAY / Каскад</title><link rel="stylesheet" href="/control/static/panel.css"><link rel="stylesheet" href="/control/static/cascade.css"><script src="/control/static/cascade.js" defer></script></head>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="csrf" content="{{csrf}}"><title>RELAY / Каскад</title><link rel="stylesheet" href="/control/static/panel.css"><link rel="stylesheet" href="/control/static/cascade.css"><script src="/control/static/cascade.js" defer></script>{% include 'favicon.html' %}</head>
 <body><div id="fsociety-preview"><div class="fc">
 {% include 'header.html' %}{% include 'navigation.html' %}
 {% if migration_blocked %}<p role="status">Сервер остановлен для переноса или ожидает включения. Туннель возобновится вместе с остальными службами в разделе «Перенос».</p>{% endif %}

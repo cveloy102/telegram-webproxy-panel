@@ -108,6 +108,13 @@ class Controller:
                 user = {'id': 'u_' + secrets.token_hex(6), 'name': name, 'group': group,
                         'secret': secrets.token_hex(16), 'enabled': True, 'created': int(time.time())}
                 state['users'].append(user)
+            elif op == 'rename':
+                if not user:
+                    raise ValueError('Профиль не найден')
+                name = request.get('name')
+                if not isinstance(name, str) or not 1 <= len(name.strip()) <= 40 or any(ord(c) < 32 for c in name):
+                    raise ValueError('Имя: от 1 до 40 символов')
+                user['name'] = name.strip()
             elif op == 'toggle':
                 if not user or type(request.get('enabled')) is not bool:
                     raise ValueError('Invalid key action')
@@ -137,8 +144,9 @@ class Controller:
             atomic(pending, state)
             applied = False
             try:
-                self.apply(state)
-                applied = True
+                if op != 'rename':
+                    self.apply(state)
+                    applied = True
                 os.replace(pending, self.path)
             except Exception:
                 if applied:

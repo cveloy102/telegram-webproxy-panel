@@ -359,10 +359,11 @@ def api_state():
 @app.post(PREFIX+'/api/action')
 def api_action():
     data=request.get_json(silent=True) or {}
-    if not isinstance(data,dict) or data.get('op') not in ('create','toggle','rotate','global','delete'):
+    if not isinstance(data,dict) or data.get('op') not in ('create','rename','toggle','rotate','global','delete'):
         abort(400)
     try:
         helper(data)
+        if data['op']=='rename':backup_changed('telegram')
         if data['op']=='delete':
             with db() as conn:
                 conn.execute('UPDATE events SET ack=1 WHERE profile=?',(data.get('id'),))
@@ -404,7 +405,7 @@ def api_ack():
 
 @app.get(PREFIX+'/static/<path:name>')
 def assets(name):
-    if name not in ('panel.css','panel.js','hysteria.css','hysteria.js','amnezia.js','backups.js','backups.css','migration.js','cascade.js','cascade.css'):
+    if name not in ('panel.css','panel.js','hysteria.css','hysteria.js','amnezia.js','backups.js','backups.css','migration.js','cascade.js','cascade.css','favicon.svg','favicon.ico','apple-touch-icon.png'):
         abort(404)
     return app.send_static_file(name)
 

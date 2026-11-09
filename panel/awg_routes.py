@@ -35,7 +35,7 @@ def register(app,authorized,csrf):
     @app.post('/control/api/awg/action')
     def awg_action():
         p=request.get_json(silent=True)
-        if not isinstance(p,dict) or p.get('op') not in ('create','toggle','rotate','limits','delete','global','routing','geo_update','geo_rollback','route_check'):abort(400)
+        if not isinstance(p,dict) or p.get('op') not in ('create','rename','toggle','rotate','limits','delete','global','routing','geo_update','geo_rollback','route_check'):abort(400)
         try:return jsonify(helper(p))
         except (OSError,ValueError) as e:return jsonify(error=str(e)),400
 

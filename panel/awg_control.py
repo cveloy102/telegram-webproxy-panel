@@ -336,6 +336,15 @@ class Controller:
             if op=='key':
                 if not u:raise ValueError('Ключ не найден')
                 return {'conf':self.config(u,s),'filename':profile_filename(u['name'],u['id']),'name':u['name'],'enabled':self.allowed(u,s)}
+            if op=='rename':
+                if not u:raise ValueError('Профиль не найден')
+                name=p.get('name')
+                if not isinstance(name,str) or not 1<=len(name.strip())<=40 or any(ord(v)<32 for v in name):raise ValueError('Имя: от 1 до 40 символов')
+                c.execute('UPDATE users SET name=? WHERE id=?',(name.strip(),u['id']))
+                c.commit()
+                from backup_notify import changed
+                changed('awg')
+                return {'ok':True}
             if op not in ('create','toggle','rotate','limits','delete','global','routing','geo_rollback'):raise ValueError('Неизвестная операция')
             # Take a final sample before removing/resetting a peer and its counters.
             if not self.test:self.collect()

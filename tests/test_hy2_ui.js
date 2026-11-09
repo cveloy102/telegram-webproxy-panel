@@ -25,5 +25,13 @@ vm.runInContext(fs.readFileSync(path.join(__dirname,'../panel/static/hysteria.js
   assert.match(node('#dialogbody').innerHTML,/Срок считается по UTC;/);
   assert.match(node('#detail').innerHTML,/2026-10-18<\/span>/,'Graph shifted to the next UTC day');
   assert.match(node('#started').textContent,/местное время/);
+  response.users[0].name='Друг <тест>';
+  await click({target:{closest:()=>({dataset:{rename:'one'}})}});
+  assert.match(node('#dialogbody').innerHTML,/value="Друг &lt;тест&gt;"/);
+  vm.runInContext('globalThis.savedAction=action;action=async p=>{globalThis.renamePayload=p;}',context);
+  node('#renameform').onsubmit({preventDefault(){},target:{elements:{name:{value:'Новое имя'}}}});
+  assert.equal(context.renamePayload.op,'rename');assert.equal(context.renamePayload.id,'one');
+  assert.equal(context.renamePayload.name,'Новое имя');
+  vm.runInContext('action=savedAction',context);
   console.log('PASS: Hysteria expiry editor and traffic graph preserve the stored UTC calendar');
 })().catch(error=>{console.error(error);process.exitCode=1;});
