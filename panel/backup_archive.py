@@ -74,7 +74,9 @@ def build_tar(output,paths,backup_dir=None):
         redirects=[]
         if paths.get('caddy') and paths['caddy'].exists():
             pattern=r'(?m)^([A-Za-z0-9., -]+)\s*\{\s*redir\s+https://'+re.escape(users['host'])+r'\{uri\}\s+(permanent|temporary|301|302|307|308)\s*\}'
-            for match in re.finditer(pattern,paths['caddy'].read_text()):
+            # Redirect blocks may also live in sites.d, where the installer keeps the owner's own sites.
+            config=paths['caddy'].read_text()+''.join('\n'+p.read_text() for p in sorted((paths['caddy'].parent/'sites.d').glob('*.caddy')))
+            for match in re.finditer(pattern,config):
                 for host in re.split(r'[,\s]+',match[1].strip()):
                     if host:redirects.append({'host':host,'code':match[2]})
         metadata={'schema':1,'created':int(time.time()),'telegram_domain':users['host'],'hysteria':False,'redirects':redirects,'files':{}}

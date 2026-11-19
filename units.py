@@ -154,6 +154,7 @@ def caddyfile(domain,email=''):
 '''+domain+''' {
  encode gzip
  header -Via
+ import /etc/caddy/proxy.d/*.caddy
  @panel path /control /control/*
  handle @panel {
   reverse_proxy 127.0.0.1:8082

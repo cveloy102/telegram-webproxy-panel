@@ -60,6 +60,8 @@ User=svalka
 Group=svalka
 WorkingDirectory={ROOT}
 Environment=SVALKA_ALLOW_SIGNUP=false
+# Optional local settings of a standalone installation (TZ, for example) keep working.
+EnvironmentFile=-{ROOT}/.env
 ExecStart={ROOT}/pocketbase serve --http=127.0.0.1:{PORT} --dir={DATA} --migrationsDir={ROOT}/pb_migrations --hooksDir={ROOT}/pb_hooks
 Restart=always
 RestartSec=3
