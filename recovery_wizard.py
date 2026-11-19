@@ -75,9 +75,10 @@ def options_from_manifest(manifest,address):
     return options
 
 
-def health_path(data,domain):
+def check_domain(data,domain):
     # The СВАЛКА server has no front page; its health endpoint proves TLS and the proxy.
-    return '/api/health' if domain==data['options'].get('svalka_domain') else None
+    if domain==data['options'].get('svalka_domain'):return check_https(domain,path='/api/health')
+    return check_https(domain,panel=domain==data['options']['domain'])
 
 
 def domains(data):
@@ -223,7 +224,7 @@ def enable_services(data,setup,root=ROOT):
         for domain in domains(data):
             setup.check_dns(domain,data['options']['ip'])
             if domain!=data['options'].get('awg_domain') or domain==data['options']['domain'] or domain==data['options'].get('hy2_domain'):
-                check_https(domain,panel=domain==data['options']['domain'],path=health_path(data,domain))
+                check_domain(data,domain)
         if not state['busy']:backup_api({'op':'migration_resume','confirm':data['options']['domain']})
         deadline=time.monotonic()+180
         while time.monotonic()<deadline:
@@ -315,7 +316,7 @@ def run_wizard(source,revision,*,setup=None,root=ROOT):
         data['dns']=True;save(data,root)
         for domain in domains(data):
             if domain==data['options'].get('awg_domain') and domain not in (data['options']['domain'],data['options'].get('hy2_domain')):continue
-            wait_check('HTTPS '+domain,lambda domain=domain:check_https(domain,panel=domain==data['options']['domain'],path=health_path(data,domain)))
+            wait_check('HTTPS '+domain,lambda domain=domain:check_domain(data,domain))
         data['https']=True;save(data,root);dashboard(data)
         if enable_services(data,setup,root):
             dashboard(data)

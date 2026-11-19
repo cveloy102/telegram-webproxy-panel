@@ -108,6 +108,19 @@ class Backup(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'СВАЛКИ'):inspect_tar(forged,self.root/'restored')
 
 
+class Wizard(unittest.TestCase):
+    def test_https_checks_keep_old_calls_and_use_health_for_svalka(self):
+        import recovery_wizard as wizard
+        data={'options':{'domain':'tg.example.com','hy2_domain':'hy.example.com','svalka_domain':'sync.example.com'}}
+        with patch.object(wizard,'check_https') as check:
+            for domain in wizard.domains(data):wizard.check_domain(data,domain)
+        self.assertEqual([c.args+tuple(sorted(c.kwargs.items())) for c in check.call_args_list],
+            [('tg.example.com',('panel',True)),('hy.example.com',('panel',False)),('sync.example.com',('path','/api/health'))])
+        manifest={'telegram_domain':'tg.example.com','hysteria':False,'svalka':True,'svalka_domain':'Sync.example.com'}
+        self.assertEqual(wizard.options_from_manifest(manifest,'1.1.1.1')['svalka_domain'],'sync.example.com')
+        with self.assertRaises(ValueError):wizard.options_from_manifest({**manifest,'svalka_domain':'tg.example.com'},'1.1.1.1')
+
+
 class Restore(unittest.TestCase):
     def test_target_compatibility(self):
         archived={'svalka':True,'svalka_domain':'sync.example.com'}
