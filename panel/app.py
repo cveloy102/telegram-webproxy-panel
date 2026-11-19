@@ -407,7 +407,7 @@ def api_ack():
 
 @app.get(PREFIX+'/static/<path:name>')
 def assets(name):
-    if name not in ('panel.css','panel.js','hysteria.css','hysteria.js','amnezia.js','backups.js','backups.css','migration.js','cascade.js','cascade.css','favicon.svg','favicon.ico','apple-touch-icon.png'):
+    if name not in ('panel.css','panel.js','hysteria.css','hysteria.js','amnezia.js','backups.js','backups.css','migration.js','cascade.js','cascade.css','svalka.js','svalka.css','favicon.svg','favicon.ico','apple-touch-icon.png'):
         abort(404)
     return app.send_static_file(name)
 
