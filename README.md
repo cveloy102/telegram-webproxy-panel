@@ -4,7 +4,7 @@
   <a href="https://github.com/cveloy102/telegram-webproxy-panel/actions/workflows/checks.yml"><img src="https://github.com/cveloy102/telegram-webproxy-panel/actions/workflows/checks.yml/badge.svg" alt="Checks"></a>
   <img src="https://img.shields.io/badge/Ubuntu-24.04_LTS-E95420?logo=ubuntu&amp;logoColor=white" alt="Ubuntu 24.04">
   <img src="https://img.shields.io/badge/platform-amd64-blue" alt="amd64">
-  <img src="https://img.shields.io/badge/release-0.5.0-green" alt="Release 0.5.0">
+  <img src="https://img.shields.io/badge/release-0.6.0-green" alt="Release 0.6.0">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT"></a>
 </p>
 
@@ -182,7 +182,7 @@ Telegram WEB → HTTPS :443 / Caddy → tproxy-server → MTProxy → Telegram
 
 [GitHub Actions](https://github.com/cveloy102/telegram-webproxy-panel/actions) проверяет Python, Bash и JavaScript, тесты панели и установщика, а затем установку настоящих служб на одноразовом Ubuntu runner: локальный HTTPS, управление ключами, сохранение данных и восстановление после сбоя обновления. Сертификат в тесте выпускается локальным CA; в обычной установке используется публичный HTTPS.
 
-Версия панели — **0.5.0**. Матрица проверок и ограничения описаны в [TESTING.md](docs/TESTING.md). Автотесты не заменяют проверку Telegram и VPN на телефоне в конкретной сети.
+Версия панели — **0.6.0**. Матрица проверок и ограничения описаны в [TESTING.md](docs/TESTING.md). Автотесты не заменяют проверку Telegram и VPN на телефоне в конкретной сети.
 
 ## 📄 Лицензия
 
