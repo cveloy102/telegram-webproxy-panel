@@ -96,6 +96,26 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(runtime.install.call_args.args[2],[])
         self.assertFalse(restarted.public()['users'][0]['routing_pending'])
 
+    def test_standalone_server_sends_every_profile_straight_out(self):
+        # A profile created as "ru_split" (older panels asked on every server) on a server without a cascade:
+        # it is neither blocked by a missing RU list nor disconnected by RU list updates, and keeps its mode.
+        self.cascade_state.return_value={}
+        with self.c.db() as c:routing.put(c,'routing_geo',{'schema':1})
+        restarted=awg_control.Controller(self.root/'awg',test=True)
+        runtime=Mock()
+        with patch.object(restarted,'routing_runtime',runtime):
+            with restarted.db() as c:restarted.apply_routing(c)
+        self.assertEqual(runtime.install.call_args.args,([],[],[]))
+        with restarted.db() as c:
+            restarted.queue_routing_reset(c)
+            self.assertIsNone(c.execute('SELECT 1 FROM routing_pending').fetchone())
+        user=restarted.public()['users'][0]
+        self.assertEqual(user['routing'],'ru_split')
+        self.cascade_state.return_value={'enabled':True,'exit_public_key':'test-key'}
+        with restarted.db() as c:
+            restarted.queue_routing_reset(c)
+            self.assertIsNotNone(c.execute('SELECT 1 FROM routing_pending').fetchone())
+
     def test_corrupt_database_blocks_split_and_does_not_reseed(self):
         with self.c.db() as c:routing.put(c,'routing_geo',{'schema':1})
         restarted=awg_control.Controller(self.root/'awg',test=True)
