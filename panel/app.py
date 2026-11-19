@@ -96,6 +96,8 @@ from migration_routes import register as register_migration
 register_migration(app,authorized,csrf)
 from cascade_routes import register as register_cascade
 register_cascade(app,authorized,csrf)
+from svalka_routes import register as register_svalka
+register_svalka(app,authorized,csrf)
 
 @app.context_processor
 def migration_context():

@@ -37,7 +37,7 @@ def fail_activation():
     raise RuntimeError('injected optional-protocol activation failure')
 
 
-answers=['3','да','hy2.example.com','24443','да','vpn.example.com','51820','да']
+answers=['3','да','hy2.example.com','24443','да','vpn.example.com','51820','нет','да']
 with patch.object(setup,'caddyfile',local_caddy),patch.object(setup,'check_dns'),patch.object(setup,'activate',fail_activation),\
      patch.object(sys,'argv',['installer.py','--source',str(ROOT)]),patch('builtins.input',side_effect=answers):
     try:setup.main()

@@ -13,6 +13,7 @@
       <a href="/control/cascade"{% if request.path=='/control/cascade' %} aria-current="page"{% endif %}>Каскад</a>
       <a href="/control/backups"{% if request.path=='/control/backups' %} aria-current="page"{% endif %}>Резервные копии</a>
       <a href="/control/migration"{% if request.path=='/control/migration' %} aria-current="page"{% endif %}>Перенос сервера</a>
+      {% if svalka_installed() %}<a href="/control/svalka"{% if request.path=='/control/svalka' %} aria-current="page"{% endif %}>СВАЛКА</a>{% endif %}
     </div>
   </nav>
 </div>

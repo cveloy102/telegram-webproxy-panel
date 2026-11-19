@@ -33,7 +33,7 @@ P=pathlib.Path
 BASE=P('/opt/relay-panel')
 STATE=P('/etc/relay-panel/install.json')
 LOG=P('/var/log/relay-panel-install.log')
-SERVICES=['relay-panel','relay-helper','tproxy-server','mtproxy','relay-refresh.timer','relay-awg','amneziawg-server','relay-hy2','hysteria-server','relay-backup']
+SERVICES=['relay-panel','relay-helper','tproxy-server','mtproxy','relay-refresh.timer','relay-awg','amneziawg-server','relay-hy2','hysteria-server','relay-backup','svalka-sync']
 
 
 def open_install_lock():
@@ -161,8 +161,10 @@ def optional_protocols(options):
     """The same add-only dialogue for fresh installs and older panel versions."""
     from hysteria_install import ask_options as hysteria_options
     from amnezia_install import ask_options as amnezia_options
+    from svalka_install import ask_options as svalka_options
     hysteria_options(sys.modules[__name__],options)
     amnezia_options(sys.modules[__name__],options)
+    svalka_options(sys.modules[__name__],options)
 
 
 def download(url,path,checksum=None):
@@ -365,8 +367,10 @@ def install_files(source,options,work,candidate,mtproxy):
     install_hysteria(sys.modules[__name__],options,work)
     from amnezia_install import install as install_amnezia
     install_amnezia(sys.modules[__name__],options,work)
+    from svalka_install import install as install_svalka,caddy as svalka_caddy
+    install_svalka(sys.modules[__name__],options,work,source)
     install_entry(sys.modules[__name__])
-    write('/etc/caddy/Caddyfile',caddyfile(options['domain'],options['email'])+(hy2_caddy(options['hy2_domain']) if options.get('hy2_domain') else ''))
+    write('/etc/caddy/Caddyfile',caddyfile(options['domain'],options['email'])+(hy2_caddy(options['hy2_domain']) if options.get('hy2_domain') else '')+(svalka_caddy(options['svalka_domain']) if options.get('svalka_domain') else ''))
     run('caddy','validate','--config','/etc/caddy/Caddyfile','--adapter','caddyfile')
     run('/usr/local/bin/tproxy-server','-config','/etc/tproxy-server/config.json','-profiles-file','/etc/tproxy-server/profiles.json','-check')
     run('systemd-analyze','verify',*[str(P('/etc/systemd/system')/name) for name in units()])
@@ -387,6 +391,8 @@ def activate(standby=False):
     activate_hysteria(sys.modules[__name__],json.loads(STATE.read_text()),standby=standby)
     from amnezia_install import activate as activate_amnezia
     activate_amnezia(sys.modules[__name__],json.loads(STATE.read_text()),standby=standby)
+    from svalka_install import activate as activate_svalka
+    activate_svalka(sys.modules[__name__],json.loads(STATE.read_text()),standby=standby)
 
 def health(domain,public=True):
     for _ in range(25):

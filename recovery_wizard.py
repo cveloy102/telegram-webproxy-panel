@@ -65,16 +65,26 @@ def options_from_manifest(manifest,address):
         host=domain_name(manifest['amnezia_domain']);port=manifest['amnezia_port']
         if type(port) is not int or not 1024<=port<=65535 or port==options.get('hy2_port'):raise ValueError('Некорректный UDP-порт AmneziaWG в архиве')
         options.update(awg_domain=host,awg_port=port)
+    if manifest.get('svalka'):
+        host=domain_name(manifest.get('svalka_domain') or '')
+        if host in (options['domain'],options.get('hy2_domain'),options.get('awg_domain')):raise ValueError('Некорректный домен СВАЛКИ в архиве.')
+        options.update(svalka_domain=host)
     # Validate redirect domains before any system configuration is installed.
     from restore import merge_redirects
     merge_redirects('',manifest.get('redirects',[]),options['domain'])
     return options
 
 
+def health_path(data,domain):
+    # The СВАЛКА server has no front page; its health endpoint proves TLS and the proxy.
+    return '/api/health' if domain==data['options'].get('svalka_domain') else None
+
+
 def domains(data):
     values=[data['options']['domain']]
     if data['options'].get('hy2_domain'):values.append(data['options']['hy2_domain'])
     if data['options'].get('awg_domain'):values.append(data['options']['awg_domain'])
+    if data['options'].get('svalka_domain'):values.append(data['options']['svalka_domain'])
     values.extend(item['host'] for item in data.get('redirects',[]))
     return list(dict.fromkeys(values))
 
@@ -107,7 +117,7 @@ def wait_check(label,check,interval=10,sleep=time.sleep):
             sleep(interval)
 
 
-def check_https(domain,panel=False):
+def check_https(domain,panel=False,path=None):
     # Normal CA and hostname validation, with no insecure fallback.
     class NoRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self,req,fp,code,msg,headers,newurl):return None
@@ -115,7 +125,7 @@ def check_https(domain,panel=False):
     # Verify the original site's TLS and response, without following it to the proxy.
     opener=urllib.request.build_opener(NoRedirect())
     try:
-        with opener.open('https://'+domain+('/control/' if panel else '/'),timeout=8) as response:
+        with opener.open('https://'+domain+(path or ('/control/' if panel else '/')),timeout=8) as response:
             if response.status!=200:raise RuntimeError('HTTPS пока не готов. Проверь входящие TCP 80/443 у хостера.')
     except urllib.error.HTTPError as error:
         if not panel and error.code in (301,302,303,307,308):return
@@ -213,7 +223,7 @@ def enable_services(data,setup,root=ROOT):
         for domain in domains(data):
             setup.check_dns(domain,data['options']['ip'])
             if domain!=data['options'].get('awg_domain') or domain==data['options']['domain'] or domain==data['options'].get('hy2_domain'):
-                check_https(domain,panel=domain==data['options']['domain'])
+                check_https(domain,panel=domain==data['options']['domain'],path=health_path(data,domain))
         if not state['busy']:backup_api({'op':'migration_resume','confirm':data['options']['domain']})
         deadline=time.monotonic()+180
         while time.monotonic()<deadline:
@@ -305,7 +315,7 @@ def run_wizard(source,revision,*,setup=None,root=ROOT):
         data['dns']=True;save(data,root)
         for domain in domains(data):
             if domain==data['options'].get('awg_domain') and domain not in (data['options']['domain'],data['options'].get('hy2_domain')):continue
-            wait_check('HTTPS '+domain,lambda domain=domain:check_https(domain,panel=domain==data['options']['domain']))
+            wait_check('HTTPS '+domain,lambda domain=domain:check_https(domain,panel=domain==data['options']['domain'],path=health_path(data,domain)))
         data['https']=True;save(data,root);dashboard(data)
         if enable_services(data,setup,root):
             dashboard(data)

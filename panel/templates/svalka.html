@@ -1,0 +1,14 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="csrf" content="{{csrf}}"><title>RELAY / СВАЛКА</title><link rel="stylesheet" href="/control/static/panel.css"><link rel="stylesheet" href="/control/static/svalka.css"><script src="/control/static/svalka.js" defer></script>{% include 'favicon.html' %}</head><body><div id="fsociety-preview"><div class="fc">
+{% include 'header.html' %}
+{% include 'navigation.html' %}{% if migration_blocked %}<p role="status">Сервер остановлен или переносится. <a href="/control/migration">Открыть управление переносом</a></p>{% endif %}
+<main class="fc-main"><div class="fc-heading"><div><div class="fc-label">SVALKA SYNC</div><h2>Дела и напоминания.<br>Одинаковые на телефоне и компьютере.</h2></div></div>
+{% if not installed %}<p class="fc-muted">Сервер синхронизации СВАЛКИ на этом VPS не установлен. Запусти установщик панели ещё раз, выбери «обновить» и ответь «да» на вопрос о СВАЛКЕ.</p>{% else %}
+<p id="svalka-status" role="status">Подключаюсь…</p><p id="svalka-error" role="alert"></p>
+<div class="fc-rule"><div><h3>Адрес для приложений</h3><p class="fc-muted">Его вводят в СВАЛКЕ на телефоне («ДАННЫЕ» → «ПОДКЛЮЧИТЬ СЕРВЕР») и на компьютере (кнопка «СИНХР»).</p></div><code id="svalka-address">—</code></div>
+<div class="fc-rule"><div><h3>Регистрация из приложений</h3><p class="fc-muted">Пока закрыта, аккаунт на сервере может завести только владелец — здесь, ниже. Открой ненадолго, если человеку удобнее зарегистрироваться самому, и закрой обратно.</p></div><button class="fc-button" id="svalka-signup" disabled>…</button></div>
+<form class="fc-rule" id="svalka-create"><div><h3>Новый аккаунт</h3><p class="fc-muted">Почта — просто логин, письма не отправляются. Пароль от 8 символов.</p></div><div class="svalka-fields"><input name="email" type="email" aria-label="Почта" placeholder="name@example.com" autocomplete="off" required><input name="password" type="text" aria-label="Пароль" placeholder="пароль" autocomplete="off" minlength="8" maxlength="71" required><button class="fc-button fc-primary" type="submit">Создать</button></div></form>
+<div class="fc-rule"><div><h3>Аккаунты <span id="svalka-count">—</span></h3><p class="fc-muted">Записи каждого аккаунта видит только он сам. Удаление аккаунта стирает его записи на сервере; на устройствах они останутся.</p></div></div>
+<ul id="svalka-users" class="svalka-users"></ul>
+<details class="fc-rule"><summary>Резервные копии и перенос</summary><div><p class="fc-muted">Аккаунты и записи СВАЛКИ входят в зашифрованную копию на Google Диске и переезжают вместе с панелью. После восстановления приложения один раз сверят все записи с сервером и дольют то, что появилось после копии. Перелогиниваться не нужно, если домен прежний.</p></div></details>
+{% endif %}
+</main></div></div></body></html>

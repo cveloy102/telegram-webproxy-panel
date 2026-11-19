@@ -15,7 +15,7 @@ RuntimeDirectory=relay-backup
 RuntimeDirectoryMode=0750
 Environment=RELAY_BACKUP_TMP=/run/relay-backup
 UMask=0077
-{HARDEN}ReadWritePaths=/var/lib/relay-backup /run/relay-backup /var/lib/relay-migration
+{HARDEN}ReadWritePaths=/var/lib/relay-backup /run/relay-backup /var/lib/relay-migration -/opt/svalka-sync/pb_data
 MemoryMax=768M
 TasksMax=64
 [Install]

@@ -297,4 +297,34 @@ class PanelTests(unittest.TestCase):
         self.assertNotIn('secret',json.dumps(result))
         self.assertEqual(self.client.get('/control/api/state',base_url='https://proxy.example.com').status_code,200)
 
+    def test_svalka_page_needs_owner_csrf_and_validates_input(self):
+        from unittest.mock import patch
+        import svalka_routes
+        url='https://proxy.example.com';api='/control/api/svalka/'
+        self.assertEqual(self.client.get(api+'state',base_url=url).status_code,401)
+        self.setup_owner()
+        credentials=root/'svalka.json'
+        with patch.object(svalka_routes,'CREDENTIALS',root/'missing-svalka.json'):
+            self.assertEqual(self.client.get(api+'state',base_url=url).status_code,404)
+            self.assertNotIn('/control/svalka',self.client.get('/control/amnezia',base_url=url).text)
+        page=self.client.get('/control/amnezia',base_url=url)
+        token=re.search(r'name="csrf" content="([^"]+)"',page.text).group(1)
+        headers={'Origin':url,'X-CSRF-Token':token}
+        state={'domain':'sync.example.com','signup':False,'users':[]}
+        credentials.write_text(json.dumps({'email':'panel@svalka.internal','password':'x','domain':'sync.example.com'}))
+        with patch.object(svalka_routes,'CREDENTIALS',credentials),patch.object(svalka_routes,'login',return_value='t'),\
+             patch.object(svalka_routes,'state',return_value=state),patch.object(svalka_routes,'call',return_value={}) as call:
+            self.assertIn('href="/control/svalka"',self.client.get('/control/svalka',base_url=url).text)
+            self.assertEqual(self.client.post(api+'action',base_url=url,json={'op':'signup','open':True}).status_code,403)
+            call.assert_not_called()
+            for payload in ({'op':'create','email':'nope','password':'long-enough'},{'op':'create','email':'a@example.com','password':'short'},
+                            {'op':'delete','id':'../users'},{'op':'drop'}):
+                with self.subTest(payload=payload):
+                    self.assertEqual(self.client.post(api+'action',base_url=url,json=payload,headers=headers).status_code,400)
+            call.assert_not_called()
+            result=self.client.post(api+'action',base_url=url,json={'op':'create','email':' A@Example.com ','password':'long-enough'},headers=headers)
+            self.assertEqual(result.status_code,200);self.assertEqual(result.json,state)
+            self.assertEqual(call.call_args.args[:3],('POST','/api/collections/users/records',
+                {'email':'a@example.com','password':'long-enough','passwordConfirm':'long-enough','verified':True}))
+
 if __name__=='__main__':unittest.main()

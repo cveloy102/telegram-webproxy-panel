@@ -66,6 +66,7 @@ class InstallerTests(unittest.TestCase):
                 else:answers+=['да','hy2.example.com','24443']
                 if has_awg:options.update(awg_domain='old-awg.example.com',awg_port=51820)
                 else:answers+=['да','awg.example.com','51820']
+                answers+=['нет']
                 before=dict(options)
                 with self.subTest(hysteria=has_hy2,amnezia=has_awg),patch('builtins.input',side_effect=answers) as user_input,patch.object(installer,'check_dns'),patch('socket.socket'),contextlib.redirect_stdout(io.StringIO()):
                     installer.optional_protocols(options)
@@ -106,6 +107,7 @@ with tempfile.TemporaryDirectory() as folder:
             terminal.expect('необязательно) [Enter — пропустить]: ');terminal.send('\n')
             terminal.expect('Установить также Hysteria 2? да / нет [Enter — да]: ');terminal.send('нет\n')
             terminal.expect('Установить также AmneziaWG 3.1? да / нет [Enter — нет]: ');terminal.send('\n')
+            terminal.expect('Установить сервер синхронизации СВАЛКИ (дела и напоминания: телефон ↔ компьютер)? да / нет [Enter — нет]: ');terminal.send('\n')
             terminal.expect('Начать? да / нет [Enter — нет]: ');terminal.send('maybe\n')
             terminal.expect('Введи да или нет');terminal.expect('Начать? да / нет [Enter — нет]: ');terminal.send('\n')
             terminal.expect('CANCELLED_NO_CHANGES');terminal.finish()
@@ -150,7 +152,8 @@ with tempfile.TemporaryDirectory() as folder:
             terminal.expect(port_prompt)
             for invalid in ('abc','80','70000'):
                 terminal.send(invalid+'\n');terminal.expect('Введи номер UDP-порта');terminal.expect(port_prompt)
-            terminal.send('\n');terminal.expect('Установить также AmneziaWG 3.1? да / нет [Enter — нет]: ');terminal.send('\n');terminal.expect('OPTIONS:');terminal.expect('\r\n');terminal.finish()
+            terminal.send('\n');terminal.expect('Установить также AmneziaWG 3.1? да / нет [Enter — нет]: ');terminal.send('\n')
+            terminal.expect('Установить сервер синхронизации СВАЛКИ (дела и напоминания: телефон ↔ компьютер)? да / нет [Enter — нет]: ');terminal.send('\n');terminal.expect('OPTIONS:');terminal.expect('\r\n');terminal.finish()
             options=json.loads(terminal.output.split(b'OPTIONS:',1)[1].splitlines()[0])
         self.assertEqual(options['title'],'Свои люди')
         self.assertEqual(options['contact'],'example_user')
@@ -162,7 +165,7 @@ with tempfile.TemporaryDirectory() as folder:
 
     def test_optional_fields_can_be_skipped_and_hysteria_disabled(self):
         import installer
-        with patch('builtins.input',side_effect=['tg.example.com','','','','','','нет','нет']),\
+        with patch('builtins.input',side_effect=['tg.example.com','','','','','','нет','нет','нет']),\
              patch.object(installer,'public_ipv4',return_value='45.67.202.147'),\
              patch.object(installer,'check_dns'),contextlib.redirect_stdout(io.StringIO()):
             options=installer.new_options()
