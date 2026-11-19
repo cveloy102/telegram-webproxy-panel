@@ -370,7 +370,10 @@ def install_files(source,options,work,candidate,mtproxy):
     from svalka_install import install as install_svalka,caddy as svalka_caddy
     install_svalka(sys.modules[__name__],options,work,source)
     install_entry(sys.modules[__name__])
-    write('/etc/caddy/Caddyfile',caddyfile(options['domain'],options['email'])+(hy2_caddy(options['hy2_domain']) if options.get('hy2_domain') else '')+(svalka_caddy(options['svalka_domain']) if options.get('svalka_domain') else ''))
+    import caddy_sites
+    managed=[options['domain'],options.get('hy2_domain'),options.get('svalka_domain')]
+    caddy_sites.preserve(sys.modules[__name__],managed)
+    write('/etc/caddy/Caddyfile',caddyfile(options['domain'],options['email'])+(hy2_caddy(options['hy2_domain']) if options.get('hy2_domain') else '')+(svalka_caddy(options['svalka_domain']) if options.get('svalka_domain') else '')+caddy_sites.includes())
     run('caddy','validate','--config','/etc/caddy/Caddyfile','--adapter','caddyfile')
     run('/usr/local/bin/tproxy-server','-config','/etc/tproxy-server/config.json','-profiles-file','/etc/tproxy-server/profiles.json','-check')
     run('systemd-analyze','verify',*[str(P('/etc/systemd/system')/name) for name in units()])
