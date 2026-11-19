@@ -12,13 +12,20 @@ import sys
 import tempfile
 import time
 
-def merge_redirects(config,redirects,target):
+def merge_redirects(config,redirects,target,existing=''):
+    """`existing` is the text of /etc/caddy/sites.d: a host already defined there (the installer moves the
+    owner's own sites and redirects into that folder) is left alone instead of being defined twice."""
     from installer import domain_name
+    from caddy_sites import items,hosts
     target=domain_name(target)
+    defined=set()
+    for kind,head,_ in items(existing):
+        if kind=='block':defined|=hosts(head)
     if not isinstance(redirects,list) or len(redirects)>20:raise ValueError('Некорректные перенаправления в копии.')
     for entry in redirects:
         host=domain_name(entry['host']);code=entry['code']
         if host==target or code not in ('permanent','temporary','301','302','307','308'):raise ValueError('Некорректное перенаправление.')
+        if host in defined:continue
         block=host+' {\n redir https://'+target+'{uri} '+code+'\n}\n'
         pattern=r'(?m)^'+re.escape(host)+r'\s*\{\s*redir\s+https://'+re.escape(target)+r'\{uri\}\s+(?:permanent|temporary|301|302|307|308)\s*\}\s*'
         if re.search(pattern,config):config=re.sub(pattern,lambda m:block,config)
@@ -112,7 +119,8 @@ def restore_main(argv=None, *, confirmed=False):
         validate_svalka(manifest,current)
         svalka=bool(manifest.get('svalka'))
         caddy=Path('/etc/caddy/Caddyfile')
-        restored_caddy=merge_redirects(caddy.read_text(),redirects,domain)
+        sites='\n'.join(p.read_text() for p in sorted((caddy.parent/'sites.d').glob('*.caddy')))
+        restored_caddy=merge_redirects(caddy.read_text(),redirects,domain,sites)
         if not confirmed and input('Будут заменены все ключи, история и вход владельца. Введи ВОССТАНОВИТЬ: ').strip()!='ВОССТАНОВИТЬ':print('Отменено.');return
         import manage
         services=['relay-backup','relay-panel','relay-helper','relay-hy2','hysteria-server','relay-awg','amneziawg-server','tproxy-server','mtproxy','relay-cascade','svalka-sync']
@@ -171,8 +179,12 @@ def restore_main(argv=None, *, confirmed=False):
             if current.get('svalka_domain'):
                 # The restored database holds the old panel account; give it this server's password again.
                 import installer,svalka_install
-                subprocess.run(['systemctl','restart','svalka-sync'],check=True)
-                svalka_install.wait_ready();svalka_install.upsert_panel_account(installer)
+                if args.standby:
+                    # Kept stopped by the migration gate until "migration resume"; the CLI works offline.
+                    svalka_install.upsert_panel_account(installer)
+                else:
+                    subprocess.run(['systemctl','restart','svalka-sync'],check=True)
+                    svalka_install.wait_ready();svalka_install.upsert_panel_account(installer);svalka_install.secure_settings()
             from installer import health
             if not args.standby:health(current['domain'],public=False)
             from backup_routes import helper as backup_ready

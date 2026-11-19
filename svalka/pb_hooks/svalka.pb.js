@@ -30,11 +30,35 @@ routerAdd("GET", "/api/svalka/info", (e) => {
 });
 
 // Never let an older edit overwrite a newer one (two devices editing the same record at once).
+// A delete for good always goes through: it must reach every device even if its clock runs behind.
 onRecordUpdateRequest((e) => {
   const before = e.record.original().getInt("updatedAt");
   const after = e.record.getInt("updatedAt");
-  if (after < before) {
+  if (after < before && !e.record.getBool("purged")) {
     throw new ApiError(409, "На сервере более новая версия записи.");
   }
   e.next();
 }, "items");
+
+// PocketBase's own backup restore brings back the old "instance" value with the rest of the database, so the
+// apps would not notice the restore and would never re-upload edits made after that backup. Mark the restore in
+// the backups folder (the one folder a restore keeps) and give the restored database a new instance at the next
+// start; PocketBase restarts itself right after a restore.
+onBackupRestore((e) => {
+  try { $os.writeFile(e.app.dataDir() + "/backups/.svalka-restored", e.name, 0o600); } catch (_) {}
+  e.next();
+});
+
+onBootstrap((e) => {
+  e.next();
+  const marker = e.app.dataDir() + "/backups/.svalka-restored";
+  try { $os.stat(marker); } catch (_) { return; }
+  try {
+    const record = e.app.findFirstRecordByData("svalka_settings", "key", "instance");
+    record.set("value", $security.randomString(16));
+    e.app.save(record);
+    $os.remove(marker);
+  } catch (err) {
+    console.log("svalka: could not renew the instance after a restore:", err);
+  }
+});

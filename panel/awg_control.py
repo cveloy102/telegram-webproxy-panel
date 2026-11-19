@@ -151,8 +151,16 @@ class Controller:
                 subprocess.run([BINARY,'syncconf',INTERFACE,str(path)],check=True,capture_output=True,timeout=10)
             finally:path.unlink(missing_ok=True)
 
+    @staticmethod
+    def cascade_configured():
+        return bool(cascade_state().get('exit_public_key'))
+
     def apply_routing(self,c):
-        split=['10.77.0.'+str(u['address']) for u in c.execute("SELECT address FROM users WHERE routing='ru_split'")]
+        # Without a cascade (a standalone server) every profile goes straight out through this server, whatever
+        # mode it was created with: "ru_split" would only add risk there (all its traffic is dropped while the
+        # RU list is missing). The stored mode is kept and applies again once a cascade is set up.
+        split=['10.77.0.'+str(u['address']) for u in c.execute("SELECT address FROM users WHERE routing='ru_split'")] \
+            if self.cascade_configured() else []
         try:geo=routing.load(c)
         except (ValueError,TypeError):geo=None
         pending=[r['address'] for r in c.execute('SELECT address FROM routing_pending ORDER BY address')]
@@ -171,6 +179,8 @@ class Controller:
     @staticmethod
     def queue_routing_reset(c,address=None):
         if address is None:
+            # A new RU list changes nothing for profiles on a standalone server: do not drop their connections.
+            if not Controller.cascade_configured():return
             c.execute("INSERT OR IGNORE INTO routing_pending SELECT address FROM users WHERE routing='ru_split'")
         else:c.execute('INSERT OR IGNORE INTO routing_pending VALUES(?)',(address,))
 
@@ -283,7 +293,8 @@ class Controller:
                 users.append({**{k:u[k] for k in ('id','name','grp','enabled','created','expires','quota','enforce','last','up','down')},
                               'allowed':allowed,'reason':self.reason(u),
                               'online':bool(allowed and fresh and self.online.get(u['id']) and u['address'] not in pending
-                                            and (u['routing']!='ru_split' or route_state['ready'])),
+                                            and (u['routing']!='ru_split' or route_state['ready']
+                                                 or not route_state['cascade_configured'])),
                               'address':'10.77.0.'+str(u['address']),
                               'routing':u['routing'],'routing_pending':u['address'] in pending,
                               'today':sum(r['up']+r['down'] for r in history if r['day']==day),

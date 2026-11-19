@@ -28,6 +28,11 @@ def items(text):
             elif c=='"':quote=False
         elif c=='"':quote=True
         elif c=='#' and (i==0 or text[i-1] in ' \t\n'):comment=True
+        elif c=='{' and text[i+1:i+2]=='$':
+            # An environment placeholder such as {$SITE} is part of an address, not a block.
+            end=text.find('}',i)
+            if end<0:raise ValueError('Caddyfile: не закрыта фигурная скобка.')
+            i=end
         elif c=='{':
             if depth==0:header_end=i
             depth+=1
@@ -53,13 +58,18 @@ def items(text):
     return result
 
 
+def host(token):
+    """The host name of one site address ('' for a port-only or catch-all address such as ':80')."""
+    token=re.sub(r'^[a-z]+://','',token.strip().lower()).split('/')[0]
+    return re.sub(r':\d+$','',token)
+
+
+def addresses(header):
+    return [token for token in re.split(r'[,\s]+',header.strip()) if token]
+
+
 def hosts(header):
-    names=set()
-    for token in re.split(r'[,\s]+',header.strip()):
-        token=re.sub(r'^[a-z]+://','',token.lower()).split('/')[0]
-        token=re.sub(r':\d+$','',token)
-        if token:names.add(token)
-    return names
+    return {name for name in map(host,addresses(header)) if name}
 
 
 def custom_sites(text,managed,existing=''):
@@ -74,8 +84,15 @@ def custom_sites(text,managed,existing=''):
     kept=[]
     for kind,head,source in items(text):
         if kind=='block':
-            if not head or hosts(head)&managed:continue  # global options or one of the panel's own sites
-            if hosts(head)&taken:continue
+            if not head:continue  # global options
+            # A port-only or catch-all block (the caddy package's default ':80 { file_server }') is not the
+            # owner's site; keeping it would answer http://IP/ with "Caddy works!" and reveal the proxy.
+            if not hosts(head):continue
+            own=[token for token in addresses(head) if host(token) not in managed]
+            if not own or hosts(' '.join(own))&taken:continue
+            if len(own)<len(addresses(head)):
+                # Mixed header: keep the owner's hosts; the panel's own host is defined by the template.
+                source=', '.join(own)+' '+source[len(head):].lstrip()
         elif head in (SITES_IMPORT,PROXY_IMPORT) or head in lines:continue
         kept.append(source)
     return '\n\n'.join(kept)

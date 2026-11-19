@@ -68,7 +68,15 @@ if want_svalka:
     created=svalka_routes.action({'op':'create','email':'friend@example.com','password':'secret-12345'})
     assert [u['email'] for u in created['users']]==['friend@example.com'] and created['signup'] is False
     assert svalka_routes.action({'op':'signup','open':True})['signup'] is True
-    assert 'sync.example.com {' in Path('/etc/caddy/Caddyfile').read_text()
+    caddyfile=Path('/etc/caddy/Caddyfile').read_text()
+    assert 'sync.example.com {' in caddyfile and 'respond @admin 404' in caddyfile
+    # Brute-force protection really is on in PocketBase (not just requested).
+    import svalka_install
+    owner=json.loads(svalka_install.CREDENTIALS.read_text())
+    token=svalka_install.local_api('POST','/api/collections/_superusers/auth-with-password',{'identity':owner['email'],'password':owner['password']})['token']
+    live=svalka_install.local_api('GET','/api/settings',token=token)
+    assert live['rateLimits']['enabled'] is True and live['trustedProxy']['headers']==['X-Forwarded-For'],live['rateLimits']
+    assert {r['label'] for r in live['rateLimits']['rules']}=={'*:auth','users:create'}
     metadata=build_tar(io.BytesIO(),layout())
     assert 'svalka/data.db' in metadata['files'] and metadata['svalka'] and metadata['svalka_domain']=='sync.example.com'
 for service,expected in (('hysteria-server',want_hy),('relay-hy2',want_hy),('amneziawg-server',want_awg),('relay-awg',want_awg),('svalka-sync',want_svalka)):

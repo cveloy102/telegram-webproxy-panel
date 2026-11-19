@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import secrets
 import shutil
 import sqlite3
@@ -56,6 +57,7 @@ def backup(include_programs=False):
         paths+=['/etc/systemd/system/svalka-sync.service','/opt/svalka-sync/pb_hooks','/opt/svalka-sync/pb_migrations']
         paths+=['/etc/systemd/system/relay-cascade-engine.service','/etc/systemd/system/relay-cascade.service.d/awg-transport.conf','/etc/tmpfiles.d/relay-cascade-awg.conf']
         paths += ['/etc/systemd/system/'+name+'.service.d/cascade.conf' for name in ('mtproxy','hysteria-server','amneziawg-server')]
+        paths+=['/etc/modules-load.d/relay-conntrack.conf','/etc/sysctl.d/90-relay-conntrack.conf']
         if include_programs:
             paths+=['/opt/relay-panel','/opt/MTProxy','/usr/local/bin/tproxy-server','/opt/svalka-sync/pocketbase']
         from units import units
@@ -83,6 +85,37 @@ def start_each(names,attempts=4,pause=3):
             if attempt<attempts-1:time.sleep(pause)
         else:failed.append(name)
     return failed
+
+def prune_backups(keep=5,folder=None):
+    """Keep only the newest local update backups; each one holds every program and grows the disk."""
+    folder=P(folder) if folder else BACKUPS
+    if not folder.is_dir():return []
+    # Names start with a UTC timestamp, so name order is age order.
+    found=sorted((p for p in folder.glob('*.tar.gz') if p.is_file() and not p.is_symlink()),key=lambda p:p.name,reverse=True)
+    for path in found[keep:]:path.unlink(missing_ok=True)
+    return found[keep:]
+
+
+def prune_releases(keep=3,base=None,units=None):
+    """Remove old panel releases, never the current one or one still named by a systemd unit."""
+    base=P(base) if base else P('/opt/relay-panel');units=P(units) if units else P('/etc/systemd/system')
+    releases=base/'releases'
+    if not releases.is_dir():return []
+    current=(base/'current').resolve() if (base/'current').exists() else None
+    referenced=''
+    if units.is_dir():
+        for path in units.rglob('*'):
+            if path.is_file() and not path.is_symlink():
+                try:referenced+=path.read_text(errors='ignore')+'\n'
+                except OSError:pass
+    folders=sorted((p for p in releases.iterdir() if p.is_dir() and not p.is_symlink()),key=lambda p:p.stat().st_mtime,reverse=True)
+    removed=[]
+    for path in folders[keep:]:
+        # A whole path component only: release "0.5.0-1" must not be kept because "0.5.0-10" is named.
+        if path.resolve()==current or re.search(re.escape(str(path))+r'(?![\w.-])',referenced):continue
+        shutil.rmtree(path,ignore_errors=True);removed.append(path)
+    return removed
+
 
 def restore_internal(path):
     """Only installer-created local backups, for a failed update on the same host."""

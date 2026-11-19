@@ -11,7 +11,7 @@ import time
 import urllib.request
 import zipfile
 from pathlib import Path
-from units import HARDEN
+from units import HARDEN,CURRENT
 
 VERSION='0.40.6'
 SHA256='0e1f609158ed945f809f8a02ae012aa0427129c66ebb63c1aee76f2c0309373f'
@@ -41,21 +41,70 @@ def ask_options(setup,options):
     options.update(svalka_domain=domain)
 
 
+# PocketBase administration is never needed from the internet: the panel talks to it over 127.0.0.1 and the
+# apps use only the users/items API. Closing these paths removes the admin UI and superuser sign-in from
+# the public attack surface (they stay reachable locally, e.g. through an SSH tunnel).
+ADMIN_PATHS=('/_','/_/*','/api/collections/_superusers/*','/api/settings','/api/settings/*','/api/logs','/api/logs/*',
+             '/api/backups','/api/backups/*','/api/crons','/api/crons/*','/api/collections','/api/collections/import')
+
+
 def caddy(domain):
     # No compression here: the apps keep a live event stream (text/event-stream) open.
     return '\n'+domain+''' {
  header -Via
+ @admin path '''+' '.join(ADMIN_PATHS)+'''
+ respond @admin 404
  reverse_proxy 127.0.0.1:'''+str(PORT)+'''
 }
 '''
 
 
+# Brute-force protection. Caddy sets X-Forwarded-For to the real client address (it does not trust an
+# incoming one), so PocketBase must read it to tell clients apart; the rightmost value is Caddy's.
+# Only sign-in and self-registration are limited: a first sync may create hundreds of records quickly.
+# The panel signs in over 127.0.0.1 on every page load, so local addresses are not limited.
+SECURITY_SETTINGS={
+    'trustedProxy':{'headers':['X-Forwarded-For'],'useLeftmostIP':False},
+    'rateLimits':{'enabled':True,'excludedIPs':['127.0.0.1','::1'],'rules':[
+        {'label':'*:auth','audience':'','duration':60,'maxRequests':10},
+        {'label':'users:create','audience':'@guest','duration':300,'maxRequests':5},
+    ]},
+}
+
+
+def local_api(method,path,body=None,token=None):
+    headers={'Content-Type':'application/json'}
+    if token:headers['Authorization']=token
+    data=None if body is None else json.dumps(body).encode()
+    request=urllib.request.Request('http://127.0.0.1:'+str(PORT)+path,data=data,method=method,headers=headers)
+    with urllib.request.urlopen(request,timeout=10) as response:
+        raw=response.read()
+        return json.loads(raw) if raw else {}
+
+
+def secure_settings():
+    """Apply SECURITY_SETTINGS through the panel's superuser. Settings live in the database, so this also
+    runs after a restore brought an older one. A failure is reported but does not stop the server."""
+    try:
+        value=json.loads(CREDENTIALS.read_text())
+        token=local_api('POST','/api/collections/_superusers/auth-with-password',{'identity':value['email'],'password':value['password']})['token']
+        local_api('PATCH','/api/settings',SECURITY_SETTINGS,token)
+    except (OSError,ValueError,KeyError) as error:
+        print('Внимание: не удалось включить защиту от перебора паролей СВАЛКИ ('+type(error).__name__+'). Сервер работает; повтори обновление позже.')
+        return False
+    return True
+
+
 def service():
+    # The same migration gate as every other client-facing service: a stopped (migrating) server must not
+    # come back after a reboot and accept records that the final copy no longer contains.
     return f'''[Unit]
 Description=СВАЛКА sync server (PocketBase)
+ConditionPathExists=!/var/lib/relay-migration/blocked
 After=network-online.target
 Wants=network-online.target
 [Service]
+ExecCondition=+/usr/bin/python3 {CURRENT}/panel/migration_state.py --can-start
 User=svalka
 Group=svalka
 WorkingDirectory={ROOT}
@@ -123,7 +172,12 @@ def wait_ready(timeout=60):
 def activate(setup,options,standby=False):
     if not options.get('svalka_domain'):return
     setup.run('systemctl','enable','svalka-sync')
-    # It serves no one until DNS points here, so it runs in standby too; a restore stops it first.
+    if standby:
+        # The migration gate keeps the service stopped until "migration resume". The panel account is
+        # written straight into the database (the CLI needs no running server); limits follow on update.
+        upsert_panel_account(setup)
+        return
     setup.run('systemctl','restart','svalka-sync')
     wait_ready()
     upsert_panel_account(setup)
+    secure_settings()

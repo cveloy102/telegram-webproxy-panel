@@ -53,6 +53,79 @@ class Installer(unittest.TestCase):
         self.assertIn('SVALKA_ALLOW_SIGNUP=false',unit);self.assertIn('--http=127.0.0.1:8090',unit)
         self.assertIn('ReadWritePaths=/opt/svalka-sync/pb_data',unit)
 
+    def test_caddy_closes_administration_from_outside(self):
+        block=svalka_install.caddy('sync.example.com')
+        matcher=next(line for line in block.splitlines() if line.strip().startswith('@admin path'))
+        paths=matcher.split()[2:]
+        for path in ('/_/*','/api/collections/_superusers/*','/api/settings','/api/logs/*','/api/backups/*'):
+            self.assertIn(path,paths)
+        # The apps' API must stay open.
+        for path in ('/api/*','/api/collections/*','/api/collections/users/*','/api/collections/items/*','/api/realtime','/api/health','/api/svalka/info'):
+            self.assertNotIn(path,paths)
+        self.assertLess(block.index('respond @admin 404'),block.index('reverse_proxy'))
+
+    def test_security_settings_limit_sign_in_per_client(self):
+        settings=svalka_install.SECURITY_SETTINGS
+        self.assertEqual(settings['trustedProxy'],{'headers':['X-Forwarded-For'],'useLeftmostIP':False})
+        limits=settings['rateLimits']
+        self.assertTrue(limits['enabled']);self.assertEqual(set(limits['excludedIPs']),{'127.0.0.1','::1'})
+        rules={r['label']:r for r in limits['rules']}
+        self.assertEqual(set(rules),{'*:auth','users:create'})
+        self.assertEqual(rules['users:create']['audience'],'@guest')
+        for rule in rules.values():self.assertGreater(rule['maxRequests'],0);self.assertGreater(rule['duration'],0)
+
+    def test_secure_settings_signs_in_and_patches(self):
+        calls=[]
+        def api(method,path,body=None,token=None):
+            calls.append((method,path,body,token))
+            return {'token':'T'} if path.endswith('auth-with-password') else {}
+        with tempfile.TemporaryDirectory() as folder:
+            credentials=Path(folder)/'svalka.json';credentials.write_text(json.dumps({'email':'panel@svalka.internal','password':'p'}))
+            with patch.object(svalka_install,'CREDENTIALS',credentials),patch.object(svalka_install,'local_api',api):
+                self.assertTrue(svalka_install.secure_settings())
+        self.assertEqual(calls[0][:3],('POST','/api/collections/_superusers/auth-with-password',{'identity':'panel@svalka.internal','password':'p'}))
+        self.assertEqual(calls[1],('PATCH','/api/settings',svalka_install.SECURITY_SETTINGS,'T'))
+
+    def test_secure_settings_failure_does_not_stop_the_server(self):
+        def down(*args,**kwargs):raise OSError('refused')
+        with tempfile.TemporaryDirectory() as folder:
+            credentials=Path(folder)/'svalka.json';credentials.write_text(json.dumps({'email':'a','password':'b'}))
+            with patch.object(svalka_install,'CREDENTIALS',credentials),patch.object(svalka_install,'local_api',down),contextlib.redirect_stdout(io.StringIO()) as out:
+                self.assertFalse(svalka_install.secure_settings())
+        self.assertIn('защиту от перебора',out.getvalue());self.assertNotIn('refused',out.getvalue())
+
+    def test_unit_has_the_migration_gate_like_other_client_services(self):
+        unit=svalka_install.service()
+        self.assertIn('ConditionPathExists=!/var/lib/relay-migration/blocked',unit)
+        self.assertIn('ExecCondition=+/usr/bin/python3 /opt/relay-panel/current/panel/migration_state.py --can-start',unit)
+        self.assertLess(unit.index('ConditionPathExists'),unit.index('[Service]'))
+        self.assertGreater(unit.index('ExecCondition'),unit.index('[Service]'))
+
+    def test_standby_activation_does_not_start_the_gated_service(self):
+        calls=[]
+        with patch.object(svalka_install,'wait_ready',side_effect=AssertionError('waited for a gated service')),\
+             patch.object(svalka_install,'upsert_panel_account',lambda setup:calls.append('account')),\
+             patch.object(svalka_install,'secure_settings',side_effect=AssertionError('needs a running server')),\
+             patch.object(setup,'run',lambda *args:calls.append(args)):
+            svalka_install.activate(setup,{'svalka_domain':'sync.example.com'},standby=True)
+        self.assertEqual(calls,[('systemctl','enable','svalka-sync'),'account'])
+
+    def test_activation_applies_security_settings(self):
+        order=[]
+        with patch.object(svalka_install,'wait_ready',lambda:order.append('ready')),\
+             patch.object(svalka_install,'upsert_panel_account',lambda setup:order.append('account')),\
+             patch.object(svalka_install,'secure_settings',lambda:order.append('secure')),\
+             patch.object(setup,'run',lambda *args:None):
+            svalka_install.activate(setup,{'svalka_domain':'sync.example.com'})
+        self.assertEqual(order,['ready','account','secure'])
+
+    def test_vendored_hooks_match_the_apps_server(self):
+        # Kept in sync with the reminder repository's server/pb_hooks/svalka.pb.js.
+        hooks=(ROOT/'svalka/pb_hooks/svalka.pb.js').read_text(encoding='utf-8')
+        self.assertIn('after < before && !e.record.getBool("purged")',hooks)  # deleting for good never gets 409
+        self.assertIn('onBackupRestore',hooks);self.assertIn('/backups/.svalka-restored',hooks)
+        self.assertIn('onBootstrap',hooks)
+
     def test_vendored_server_files_present(self):
         self.assertTrue((ROOT/'svalka/pb_hooks/svalka.pb.js').exists())
         self.assertTrue(list((ROOT/'svalka/pb_migrations').glob('*_svalka_settings.js')))

@@ -130,7 +130,19 @@ class Controller:
                 parts.append(repr(c.execute('SELECT '+columns+' FROM users ORDER BY id').fetchall()).encode())
         for path in (self.paths['users'],self.paths['owner']/'auth.json',self.paths['hy2config']):
             if path.exists():parts.append(path.read_bytes())
-        if self.paths.get('caddy') and self.paths['caddy'].exists():parts.append(self.paths['caddy'].read_bytes())
+        if self.paths.get('caddy') and self.paths['caddy'].exists():
+            parts.append(self.paths['caddy'].read_bytes())
+            # The owner's own sites (and redirects saved in the copy) live beside it since sites.d.
+            for path in sorted((self.paths['caddy'].parent/'sites.d').glob('*.caddy')):parts.extend([path.name.encode(),path.read_bytes()])
+        svalka=self.paths.get('svalka')
+        if svalka and (svalka/'data.db').exists():
+            from backup_archive import svalka_domain
+            if svalka_domain():
+                # Cheap fingerprint: PocketBase writes every change to the WAL first, then checkpoints.
+                for name in ('data.db','data.db-wal'):
+                    path=svalka/name
+                    if path.exists():
+                        stat=path.stat();parts.append(f'{name}:{stat.st_mtime_ns}:{stat.st_size}'.encode())
         for path,queries in [(self.paths['owner']/'panel.sqlite3',['SELECT salt,hash,totp,verified FROM owner','SELECT hash FROM recovery ORDER BY hash','SELECT * FROM settings']), (self.paths['hy2']/'hy2.sqlite3',['SELECT id,name,secret,enabled,quota,expires,enforce FROM users ORDER BY id','SELECT k,v FROM settings WHERE k NOT IN ("started","epoch") ORDER BY k'])]:
             if not path.exists():continue
             with contextlib.closing(sqlite3.connect(f'file:{path}?mode=ro',uri=True)) as c:
