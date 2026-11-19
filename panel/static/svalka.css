@@ -1,0 +1,7 @@
+#fsociety-preview .svalka-fields{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+#fsociety-preview .svalka-fields input{min-width:0;flex:1 1 180px}
+#fsociety-preview .svalka-users{list-style:none;margin:0;padding:0}
+#fsociety-preview .svalka-users li{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--fc-line)}
+#fsociety-preview .svalka-users li span{overflow-wrap:anywhere}
+#fsociety-preview .svalka-users li div{display:flex;gap:8px}
+#fsociety-preview #svalka-address{overflow-wrap:anywhere}

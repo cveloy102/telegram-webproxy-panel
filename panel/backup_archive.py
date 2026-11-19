@@ -27,12 +27,17 @@ def layout(prefix='relay',panel_dir=None):
       'hy2config':Path('/etc/hysteria/config.yaml'),
       'hy2cover':Path('/var/lib/hysteria/cover'),
       'caddy':Path('/etc/caddy/Caddyfile'),
+      'svalka':Path(os.getenv('RELAY_BACKUP_SVALKA','/opt/svalka-sync/pb_data')),
       'panel_dir':Path(panel_dir or '/opt/relay-panel/current/panel'),
     }
 
 def sqlite_snapshot(source,target):
     with contextlib.closing(sqlite3.connect(f'file:{source}?mode=ro',uri=True)) as a,contextlib.closing(sqlite3.connect(target)) as b:a.backup(b)
     target.chmod(0o600)
+
+def svalka_domain():
+    try:return json.loads(Path('/etc/relay-panel/install.json').read_text()).get('svalka_domain') or ''
+    except (OSError,ValueError):return ''
 
 def build_tar(output,paths,backup_dir=None):
     """Create a consistent SQLite snapshot and stream the compressed plaintext only to age."""
@@ -47,6 +52,9 @@ def build_tar(output,paths,backup_dir=None):
                 dest=temp/logical.replace('/','_');sqlite_snapshot(path,dest);files[logical]=dest
         if paths.get('awg') and (paths['awg']/'awg.sqlite3').exists():
             dest=temp/'awg.sqlite3';sqlite_snapshot(paths['awg']/'awg.sqlite3',dest);files['amnezia/awg.sqlite3']=dest
+        if paths.get('svalka') and (paths['svalka']/'data.db').exists():
+            # СВАЛКА accounts and records; PocketBase's log database is not needed.
+            dest=temp/'svalka_data.db';sqlite_snapshot(paths['svalka']/'data.db',dest);files['svalka/data.db']=dest
         if paths.get('cascade'):
             for name in ('state.json','private.key','public.key','transport.json'):
                 path=paths['cascade']/name
@@ -78,6 +86,8 @@ def build_tar(output,paths,backup_dir=None):
             with contextlib.closing(sqlite3.connect(files['amnezia/awg.sqlite3'])) as c:
                 settings={k:json.loads(v) for k,v in c.execute("SELECT k,v FROM settings WHERE k IN ('host','port')")}
             metadata.update(amnezia=True,amnezia_domain=settings['host'],amnezia_port=settings['port'])
+        if 'svalka/data.db' in files:
+            metadata.update(svalka=True,svalka_domain=svalka_domain())
         total=0
         with tarfile.open(fileobj=output,mode='w|gz') as archive:
             for name,path in files.items():
@@ -111,7 +121,7 @@ def inspect_tar(path,destination):
         for item in archive:
             name=item.name
             if not item.isfile() or name.startswith('/') or '..' in Path(name).parts or '\\' in name or name in names:raise ValueError('Небезопасная структура архива.')
-            if name!='manifest.json' and name not in ('telegram/users.json','telegram/usage.json','owner/auth.json','owner/panel.sqlite3','hysteria/hy2.sqlite3','amnezia/awg.sqlite3','backup/config.json','backup/rclone.conf','cascade/state.json','cascade/private.key','cascade/public.key','cascade/transport.json') and not name.startswith(('site/','hysteria/cover/')):raise ValueError('Неизвестный файл в архиве.')
+            if name!='manifest.json' and name not in ('telegram/users.json','telegram/usage.json','owner/auth.json','owner/panel.sqlite3','hysteria/hy2.sqlite3','amnezia/awg.sqlite3','backup/config.json','backup/rclone.conf','cascade/state.json','cascade/private.key','cascade/public.key','cascade/transport.json','svalka/data.db') and not name.startswith(('site/','hysteria/cover/')):raise ValueError('Неизвестный файл в архиве.')
             names.add(name);total+=item.size
             if total>MAX_EXPANDED or len(names)>2000:raise ValueError('Архив превышает допустимый размер.')
             members.append(item)
@@ -131,7 +141,8 @@ def inspect_tar(path,destination):
         from cascade_network import validate_transport
         validate_transport(json.loads(transport.read_text()))
         if not (destination/'cascade/state.json').exists():raise ValueError('Транспорт без состояния каскада.')
-    for name in ('owner/panel.sqlite3','hysteria/hy2.sqlite3','amnezia/awg.sqlite3'):
+    if bool(manifest.get('svalka'))!=(destination/'svalka/data.db').exists():raise ValueError('Неполная копия СВАЛКИ.')
+    for name in ('owner/panel.sqlite3','hysteria/hy2.sqlite3','amnezia/awg.sqlite3','svalka/data.db'):
         p=destination/name
         if p.exists():
             with contextlib.closing(sqlite3.connect(f'file:{p}?mode=ro',uri=True)) as db:

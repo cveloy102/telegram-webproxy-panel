@@ -12,9 +12,9 @@ import installer as setup
 import hysteria_install
 from helper import Controller as Telegram
 
-mode=sys.argv[1];assert mode in ('none','hysteria','amnezia','both')
+mode=sys.argv[1];assert mode in ('none','hysteria','amnezia','both','svalka')
 assert not setup.STATE.exists(),'Fresh installation requires a fresh CI runner'
-want_hy=mode in ('hysteria','both');want_awg=mode in ('amnezia','both')
+want_hy=mode in ('hysteria','both');want_awg=mode in ('amnezia','both');want_svalka=mode=='svalka'
 caddyfile=setup.caddyfile;health=setup.health;hy_activate=hysteria_install.activate
 
 
@@ -40,6 +40,7 @@ def local_hysteria(context,options,standby=False):
 answers=['1','relay.example.com','','','','','']
 answers+=['да','hy2.example.com','24443'] if want_hy else ['нет']
 answers+=['да','vpn.example.com','51820'] if want_awg else ['нет']
+answers+=['да','sync.example.com'] if want_svalka else ['нет']
 answers+=['да']
 with patch.object(sys,'argv',['installer.py','--source',str(ROOT),'--revision','fresh-'+mode]),\
      patch.object(setup,'public_ipv4',return_value='1.1.1.1'),patch.object(setup,'check_dns'),\
@@ -59,7 +60,18 @@ if want_hy:
     hy2({'op':'create','name':'Fresh HY friend','group':'Семья'});hy2({'op':'migration_ready'})
 if want_awg:
     awg({'op':'create','name':'Fresh AWG friend','group':'Семья'});awg({'op':'migration_ready'})
-for service,expected in (('hysteria-server',want_hy),('relay-hy2',want_hy),('amneziawg-server',want_awg),('relay-awg',want_awg)):
+assert bool(state.get('svalka_domain'))==want_svalka
+if want_svalka:
+    # Real PocketBase: panel account works, accounts can be created, data goes into the encrypted backup format.
+    import io,svalka_routes
+    from backup_archive import build_tar,layout
+    created=svalka_routes.action({'op':'create','email':'friend@example.com','password':'secret-12345'})
+    assert [u['email'] for u in created['users']]==['friend@example.com'] and created['signup'] is False
+    assert svalka_routes.action({'op':'signup','open':True})['signup'] is True
+    assert 'sync.example.com {' in Path('/etc/caddy/Caddyfile').read_text()
+    metadata=build_tar(io.BytesIO(),layout())
+    assert 'svalka/data.db' in metadata['files'] and metadata['svalka'] and metadata['svalka_domain']=='sync.example.com'
+for service,expected in (('hysteria-server',want_hy),('relay-hy2',want_hy),('amneziawg-server',want_awg),('relay-awg',want_awg),('svalka-sync',want_svalka)):
     assert (subprocess.run(['systemctl','is-active','--quiet',service]).returncode==0)==expected,service
 # Exercise existing-installation check, backup, invalid entry and exit through main.
 for answer in (['1'],['2'],['invalid','0']):

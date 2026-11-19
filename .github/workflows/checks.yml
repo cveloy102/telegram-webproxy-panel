@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        protocols: [none, hysteria, amnezia, both]
+        protocols: [none, hysteria, amnezia, both, svalka]
     steps:
       - uses: actions/checkout@v4
       - name: Actual fresh installation and initial menus
@@ -25,7 +25,7 @@ jobs:
         if: failure()
         run: |
           sudo tail -n 100 /var/log/relay-panel-install.log || true
-          sudo journalctl --no-pager -n 60 -u relay-panel -u amneziawg-server -u relay-awg -u relay-hy2 -u hysteria-server || true
+          sudo journalctl --no-pager -n 60 -u relay-panel -u amneziawg-server -u relay-awg -u relay-hy2 -u hysteria-server -u svalka-sync || true
   tests:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
@@ -37,7 +37,7 @@ jobs:
           sudo apt-get install -y python3-flask python3-qrcode python3-pil python3-yaml age rclone shellcheck wireguard-tools nftables iproute2 curl conntrack
           bash -n install.sh
           shellcheck install.sh
-          python3 -m compileall -q installer.py cascade_install.py manage.py restore.py recovery_wizard.py units.py amnezia_install.py hysteria_install.py backup_install.py panel tests
+          python3 -m compileall -q installer.py cascade_install.py manage.py restore.py recovery_wizard.py units.py amnezia_install.py hysteria_install.py backup_install.py svalka_install.py panel tests
           python3 -m unittest discover -s tests -v
           node --check panel/static/panel.js
           node --check panel/static/hysteria.js
@@ -50,6 +50,7 @@ jobs:
           node --check panel/static/backups.js
           node --check panel/static/migration.js
           node --check panel/static/cascade.js
+          node --check panel/static/svalka.js
           node tests/test_cascade_ui.js
       - name: Isolated real cascade routing and outage protection
         run: sudo /usr/bin/python3 tests/smoke_cascade.py

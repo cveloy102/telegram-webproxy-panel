@@ -41,6 +41,7 @@ def restore_files(files,paths):
                 raise ValueError('Ключи каскада в резервной копии не совпадают.')
     mappings=[('telegram/users.json',paths['users'],'root','root',0o600),('telegram/usage.json',paths['usage'],'tproxy','relayadmin',0o640),('owner/auth.json',paths['owner']/'auth.json','relayadmin','relayadmin',0o600),('owner/panel.sqlite3',paths['owner']/'panel.sqlite3','relayadmin','relayadmin',0o600),('hysteria/hy2.sqlite3',paths['hy2']/'hy2.sqlite3','root','root',0o600)]
     if paths.get('awg'):mappings.append(('amnezia/awg.sqlite3',paths['awg']/'awg.sqlite3','root','root',0o600))
+    if paths.get('svalka') and paths['svalka'].exists():mappings.append(('svalka/data.db',paths['svalka']/'data.db','svalka','svalka',0o600))
     if paths.get('cascade'):
         for name in ('state.json','private.key','public.key','transport.json'):
             mappings.append(('cascade/'+name,paths['cascade']/name,'root','root',0o600))
@@ -50,7 +51,7 @@ def restore_files(files,paths):
         target.parent.mkdir(parents=True,exist_ok=True)
         if name.startswith('cascade/'):target.parent.chmod(0o700)
         for suffix in ('-wal','-shm','-journal'):
-            if target.name.endswith('.sqlite3'):Path(str(target)+suffix).unlink(missing_ok=True)
+            if target.name.endswith(('.sqlite3','.db')):Path(str(target)+suffix).unlink(missing_ok=True)
         pending=target.with_name(target.name+'.restore');shutil.copyfile(source,pending);shutil.chown(pending,user,group);pending.chmod(mode);pending.replace(target)
     for name,target in [('site',paths['site']),('hysteria/cover',paths['hy2cover'])]:
         source=files/name
@@ -73,6 +74,20 @@ def validate_target(manifest,current):
         if archived and current[field]!=archived_domain:
             raise ValueError('Сначала установи '+name+' с прежним доменом из копии.')
 
+def validate_svalka(manifest,current):
+    # A copy without СВАЛКА may go onto a server with it (it simply starts empty), not the other way round.
+    if manifest.get('svalka') and not current.get('svalka_domain'):
+        raise ValueError('В копии есть сервер СВАЛКИ. Сначала установи панель с СВАЛКОЙ на прежнем домене: '+str(manifest.get('svalka_domain')))
+    if manifest.get('svalka') and manifest.get('svalka_domain') and current['svalka_domain']!=manifest['svalka_domain']:
+        raise ValueError('Сначала установи СВАЛКУ с прежним доменом из копии: '+manifest['svalka_domain']+'. Иначе приложения её не найдут.')
+
+def new_svalka_instance(database):
+    """Apps compare all their records with the server once, so edits newer than this copy come back."""
+    import secrets
+    with contextlib.closing(sqlite3.connect(database)) as c,c:
+        if c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='svalka_settings'").fetchone():
+            c.execute("UPDATE svalka_settings SET value=? WHERE key='instance'",(secrets.token_hex(8),))
+
 def restore_main(argv=None, *, confirmed=False):
     if os.geteuid()!=0:raise ValueError('Восстановление запускается от root.')
     parser=argparse.ArgumentParser(description='Восстановить зашифрованную копию Relay Panel')
@@ -90,14 +105,17 @@ def restore_main(argv=None, *, confirmed=False):
         redirects=manifest.get('redirects',[])
         print('Дата копии (Unix):',manifest['created']);print('Telegram:',domain);print('Hysteria:',hy2 or 'нет')
         print('AmneziaWG:',awg or 'нет')
+        print('СВАЛКА:',manifest.get('svalka_domain') or ('есть' if manifest.get('svalka') else 'нет'))
         if args.inspect:print('Копия расшифрована, манифест и базы проверены. Данные сервера не изменены.');return
         current=json.loads(Path('/etc/relay-panel/install.json').read_text())
         validate_target(manifest,current)
+        validate_svalka(manifest,current)
+        svalka=bool(manifest.get('svalka'))
         caddy=Path('/etc/caddy/Caddyfile')
         restored_caddy=merge_redirects(caddy.read_text(),redirects,domain)
         if not confirmed and input('Будут заменены все ключи, история и вход владельца. Введи ВОССТАНОВИТЬ: ').strip()!='ВОССТАНОВИТЬ':print('Отменено.');return
         import manage
-        services=['relay-backup','relay-panel','relay-helper','relay-hy2','hysteria-server','relay-awg','amneziawg-server','tproxy-server','mtproxy','relay-cascade']
+        services=['relay-backup','relay-panel','relay-helper','relay-hy2','hysteria-server','relay-awg','amneziawg-server','tproxy-server','mtproxy','relay-cascade','svalka-sync']
         subprocess.run(['systemctl','stop',*services],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         before=manage.backup(include_programs=True);print('Копия состояния до восстановления:',before)
         from backup_control import Controller as Backup
@@ -108,6 +126,7 @@ def restore_main(argv=None, *, confirmed=False):
             for name in ('relay-refresh.timer','relay-refresh.service'):
                 subprocess.run(['systemctl','stop',name],check=True,capture_output=True)
             paths=layout();restore_files(temp/'files',paths)
+            if svalka:new_svalka_instance(paths['svalka']/'data.db')
             if (temp/'files/cascade/state.json').exists():
                 from cascade_network import install_transport_runtime
                 install_transport_runtime()
@@ -149,6 +168,11 @@ def restore_main(argv=None, *, confirmed=False):
             subprocess.run(['systemctl','restart','relay-helper','relay-panel','relay-backup'],check=True)
             if hy2 and not args.standby:subprocess.run(['systemctl','restart','relay-hy2','hysteria-server'],check=True)
             if awg and not args.standby:subprocess.run(['systemctl','restart','amneziawg-server','relay-awg'],check=True)
+            if current.get('svalka_domain'):
+                # The restored database holds the old panel account; give it this server's password again.
+                import installer,svalka_install
+                subprocess.run(['systemctl','restart','svalka-sync'],check=True)
+                svalka_install.wait_ready();svalka_install.upsert_panel_account(installer)
             from installer import health
             if not args.standby:health(current['domain'],public=False)
             from backup_routes import helper as backup_ready

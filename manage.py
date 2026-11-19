@@ -20,7 +20,7 @@ P=pathlib.Path
 DATA=P('/var/lib/relay-panel')
 ROOT=P('/etc/relay-panel')
 BACKUPS=P('/var/backups/relay-panel')
-NAMES=['relay-awg','amneziawg-server','relay-backup','relay-hy2','hysteria-server','relay-panel','relay-helper','tproxy-server','mtproxy','relay-refresh.timer','relay-cascade']
+NAMES=['relay-awg','amneziawg-server','relay-backup','relay-hy2','hysteria-server','relay-panel','relay-helper','tproxy-server','mtproxy','relay-refresh.timer','relay-cascade','svalka-sync']
 
 def owner_exists():
     path=DATA/'panel.sqlite3'
@@ -49,18 +49,20 @@ def backup(include_programs=False):
     descriptor=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
     with tempfile.TemporaryDirectory(prefix='relay-backup-') as temp,os.fdopen(descriptor,'wb') as output,tarfile.open(fileobj=output,mode='w:gz') as archive:
         def no_database(item):
+            if item.name.startswith('opt/svalka-sync/pb_data'):return None
             return None if P(item.name).name in ('awg.sqlite3','awg.sqlite3-wal','awg.sqlite3-shm','awg.sqlite3-journal') else (None if item.name.endswith(('panel.sqlite3','panel.sqlite3-wal','panel.sqlite3-shm','panel.sqlite3-journal','hy2.sqlite3','hy2.sqlite3-wal','hy2.sqlite3-shm','hy2.sqlite3-journal')) else item)
         paths=['/var/lib/relay-awg','/etc/systemd/system/relay-awg.service','/etc/systemd/system/amneziawg-server.service','/etc/tmpfiles.d/relay-awg.conf','/etc/sysctl.d/80-relay-awg.conf','/usr/local/bin/awg','/usr/local/bin/amneziawg-go','/etc/hysteria','/var/lib/hysteria','/var/lib/relay-hy2','/var/lib/relay-backup','/srv/relay-site','/etc/systemd/system/relay-backup.service','/etc/systemd/system/relay-hy2.service','/etc/systemd/system/hysteria-server.service','/usr/local/bin/hysteria','/etc/relay-panel','/etc/tproxy-server','/etc/mtproxy','/etc/caddy/Caddyfile','/var/lib/relay-panel','/var/lib/tproxy-accounting','/var/lib/caddy','/usr/local/sbin/relay-panel']
         paths+=['/etc/relay-cascade','/etc/systemd/system/relay-cascade.service','/etc/sysctl.d/81-relay-cascade.conf']
+        paths+=['/etc/systemd/system/svalka-sync.service','/opt/svalka-sync/pb_hooks','/opt/svalka-sync/pb_migrations']
         paths+=['/etc/systemd/system/relay-cascade-engine.service','/etc/systemd/system/relay-cascade.service.d/awg-transport.conf','/etc/tmpfiles.d/relay-cascade-awg.conf']
         paths += ['/etc/systemd/system/'+name+'.service.d/cascade.conf' for name in ('mtproxy','hysteria-server','amneziawg-server')]
         if include_programs:
-            paths+=['/opt/relay-panel','/opt/MTProxy','/usr/local/bin/tproxy-server']
+            paths+=['/opt/relay-panel','/opt/MTProxy','/usr/local/bin/tproxy-server','/opt/svalka-sync/pocketbase']
         from units import units
         paths += [str(P('/etc/systemd/system')/name) for name in units()]
         for source in paths:
             if P(source).exists():archive.add(source,arcname=source.lstrip('/'),filter=no_database)
-        for database in (DATA/'panel.sqlite3',P('/var/lib/relay-hy2/hy2.sqlite3'),P('/var/lib/relay-awg/awg.sqlite3')):
+        for database in (DATA/'panel.sqlite3',P('/var/lib/relay-hy2/hy2.sqlite3'),P('/var/lib/relay-awg/awg.sqlite3'),P('/opt/svalka-sync/pb_data/data.db')):
             if database.exists():
                 target=P(temp)/database.name
                 with contextlib.closing(sqlite3.connect(f'file:{database}?mode=ro',uri=True)) as source,contextlib.closing(sqlite3.connect(target)) as destination:source.backup(destination)
@@ -90,7 +92,7 @@ def restore_internal(path):
             subprocess.run(['nft','delete','table','inet','relay_cascade'],capture_output=True)
         for item in members:
             if item.name.startswith('/') or '..' in P(item.name).parts:raise RuntimeError('Небезопасный путь в резервной копии.')
-        binaries={'usr/local/bin/amneziawg-go','usr/local/bin/awg','usr/local/bin/hysteria','usr/local/bin/tproxy-server'}
+        binaries={'usr/local/bin/amneziawg-go','usr/local/bin/awg','usr/local/bin/hysteria','usr/local/bin/tproxy-server','opt/svalka-sync/pocketbase'}
         ordinary=[]
         for item in members:
             if item.name not in binaries or not item.isfile():
@@ -106,6 +108,9 @@ def restore_internal(path):
                     pending.chmod(item.mode & 0o777);os.chown(pending,item.uid,item.gid)
                     pending.replace(target)
                 finally:pending.unlink(missing_ok=True)
+        if any(item.name=='opt/svalka-sync/pb_data/data.db' for item in ordinary):
+            # PocketBase uses WAL: a leftover log would be replayed over the restored snapshot.
+            for suffix in ('-wal','-shm'):P('/opt/svalka-sync/pb_data/data.db'+suffix).unlink(missing_ok=True)
         archive.extractall('/',members=ordinary)
     subprocess.run(['systemctl','daemon-reload'],check=True)
     subprocess.run(['systemctl','reset-failed','mtproxy','tproxy-server','relay-helper','relay-panel'],check=True)
@@ -119,6 +124,8 @@ def restore_internal(path):
     selected=['relay-backup']
     if not blocked() and state.get('hy2_domain'):selected+=['relay-hy2','hysteria-server']
     if not blocked() and state.get('awg_domain'):selected+=['amneziawg-server','relay-awg']
+    # СВАЛКА may predate the panel (standalone install): its data is never quarantined on rollback.
+    if state.get('svalka_domain') or P('/opt/svalka-sync/pb_data').exists():selected+=['svalka-sync']
     for field,services,paths in (
         ('hy2_domain',('relay-hy2','hysteria-server'),('/var/lib/relay-hy2','/etc/hysteria','/var/lib/hysteria')),
         ('awg_domain',('relay-awg','amneziawg-server'),('/var/lib/relay-awg',))):

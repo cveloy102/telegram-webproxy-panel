@@ -30,7 +30,7 @@ def local_caddy(domain,email=''):
 
 with patch.object(setup,'caddyfile',local_caddy),patch.object(setup,'health',lambda domain,public=True:health(domain,public=False)),\
      patch.object(sys,'argv',['installer.py','--source',str(ROOT),'--revision','protocol-update-smoke']),\
-     patch('builtins.input',side_effect=['3','да']):
+     patch('builtins.input',side_effect=['3','нет','да']):
     setup.main()
 assert saved()==before
 assert json.loads(setup.STATE.read_text())['version']==setup.VERSION
@@ -43,7 +43,7 @@ def fail_install(*args,**kwargs):
 
 with patch.object(setup,'install_files',fail_install),\
      patch.object(sys,'argv',['installer.py','--source',str(ROOT)]),\
-     patch('builtins.input',side_effect=['3','да']):
+     patch('builtins.input',side_effect=['3','нет','да']):
     try:setup.main()
     except RuntimeError as error:assert str(error)=='injected update failure'
     else:raise AssertionError('Failure injection was ignored')
