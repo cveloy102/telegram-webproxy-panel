@@ -57,6 +57,7 @@ def backup(include_programs=False):
         paths+=['/etc/systemd/system/svalka-sync.service','/opt/svalka-sync/pb_hooks','/opt/svalka-sync/pb_migrations']
         paths+=['/etc/systemd/system/relay-cascade-engine.service','/etc/systemd/system/relay-cascade.service.d/awg-transport.conf','/etc/tmpfiles.d/relay-cascade-awg.conf']
         paths += ['/etc/systemd/system/'+name+'.service.d/cascade.conf' for name in ('mtproxy','hysteria-server','amneziawg-server')]
+        paths+=['/etc/modules-load.d/relay-conntrack.conf','/etc/sysctl.d/90-relay-conntrack.conf']
         if include_programs:
             paths+=['/opt/relay-panel','/opt/MTProxy','/usr/local/bin/tproxy-server','/opt/svalka-sync/pocketbase']
         from units import units

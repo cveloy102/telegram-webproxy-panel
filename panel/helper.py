@@ -14,6 +14,7 @@ import threading
 import time
 import urllib.request
 from migration_state import mutation, blocked
+from backend import active_users, health_url
 
 BASE = pathlib.Path(os.getenv('RELAY_ROOT', '/etc/relay-panel'))
 
@@ -50,7 +51,7 @@ class Controller:
         if start and blocked():raise ValueError('Сервер остановлен для переноса.')
         if self.apply_override:
             return self.apply_override(state)
-        active = [u for u in state['users'] if u['enabled'] and not state['paused']]
+        active = active_users(state)
         if len(active)>16:
             raise ValueError('MTProxy поддерживает до 16 активных ключей. Приостанови один из ключей.')
         profiles = [{'name': u['id'], 'secret': u['secret'], 'backend': '127.0.0.1:2398',
@@ -62,7 +63,7 @@ class Controller:
         before = [(p.read_bytes() if p.exists() else None) for p in paths]
         try:
             atomic(paths[0], {'profiles': profiles}, 0o400, 'tproxy')
-            atomic(paths[1], {'secrets': [p['secret'] for p in profiles]}, 0o640, 'mtproxy')
+            atomic(paths[1], {'secrets': [p['secret'] for p in profiles], 'enabled': bool(active)}, 0o640, 'mtproxy')
             subprocess.run(['/usr/local/bin/tproxy-server', '-config', '/etc/tproxy-server/config.json',
                             '-profiles-file', str(paths[0]), '-check'], check=True, capture_output=True, timeout=15)
             if not start:return
@@ -70,7 +71,7 @@ class Controller:
             subprocess.run(['systemctl', 'restart', 'mtproxy', 'tproxy-server'], check=True, capture_output=True, timeout=60)
             for _ in range(30):
                 try:
-                    with urllib.request.urlopen('http://127.0.0.1:8081/readyz', timeout=2) as response:
+                    with urllib.request.urlopen(health_url(state), timeout=2) as response:
                         if response.status == 200:
                             return
                 except OSError:
