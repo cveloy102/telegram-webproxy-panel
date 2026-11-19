@@ -52,7 +52,9 @@ def build_tar(output,paths,backup_dir=None):
                 dest=temp/logical.replace('/','_');sqlite_snapshot(path,dest);files[logical]=dest
         if paths.get('awg') and (paths['awg']/'awg.sqlite3').exists():
             dest=temp/'awg.sqlite3';sqlite_snapshot(paths['awg']/'awg.sqlite3',dest);files['amnezia/awg.sqlite3']=dest
-        if paths.get('svalka') and (paths['svalka']/'data.db').exists():
+        # Only a СВАЛКА the panel manages (install.json has its domain) is restorable; a leftover or
+        # rolled-back database without a domain would make the whole copy impossible to restore.
+        if paths.get('svalka') and (paths['svalka']/'data.db').exists() and svalka_domain():
             # СВАЛКА accounts and records; PocketBase's log database is not needed.
             dest=temp/'svalka_data.db';sqlite_snapshot(paths['svalka']/'data.db',dest);files['svalka/data.db']=dest
         if paths.get('cascade'):

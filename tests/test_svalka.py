@@ -94,6 +94,22 @@ class Installer(unittest.TestCase):
                 self.assertFalse(svalka_install.secure_settings())
         self.assertIn('защиту от перебора',out.getvalue());self.assertNotIn('refused',out.getvalue())
 
+    def test_unit_has_the_migration_gate_like_other_client_services(self):
+        unit=svalka_install.service()
+        self.assertIn('ConditionPathExists=!/var/lib/relay-migration/blocked',unit)
+        self.assertIn('ExecCondition=+/usr/bin/python3 /opt/relay-panel/current/panel/migration_state.py --can-start',unit)
+        self.assertLess(unit.index('ConditionPathExists'),unit.index('[Service]'))
+        self.assertGreater(unit.index('ExecCondition'),unit.index('[Service]'))
+
+    def test_standby_activation_does_not_start_the_gated_service(self):
+        calls=[]
+        with patch.object(svalka_install,'wait_ready',side_effect=AssertionError('waited for a gated service')),\
+             patch.object(svalka_install,'upsert_panel_account',lambda setup:calls.append('account')),\
+             patch.object(svalka_install,'secure_settings',side_effect=AssertionError('needs a running server')),\
+             patch.object(setup,'run',lambda *args:calls.append(args)):
+            svalka_install.activate(setup,{'svalka_domain':'sync.example.com'},standby=True)
+        self.assertEqual(calls,[('systemctl','enable','svalka-sync'),'account'])
+
     def test_activation_applies_security_settings(self):
         order=[]
         with patch.object(svalka_install,'wait_ready',lambda:order.append('ready')),\
@@ -102,6 +118,13 @@ class Installer(unittest.TestCase):
              patch.object(setup,'run',lambda *args:None):
             svalka_install.activate(setup,{'svalka_domain':'sync.example.com'})
         self.assertEqual(order,['ready','account','secure'])
+
+    def test_vendored_hooks_match_the_apps_server(self):
+        # Kept in sync with the reminder repository's server/pb_hooks/svalka.pb.js.
+        hooks=(ROOT/'svalka/pb_hooks/svalka.pb.js').read_text(encoding='utf-8')
+        self.assertIn('after < before && !e.record.getBool("purged")',hooks)  # deleting for good never gets 409
+        self.assertIn('onBackupRestore',hooks);self.assertIn('/backups/.svalka-restored',hooks)
+        self.assertIn('onBootstrap',hooks)
 
     def test_vendored_server_files_present(self):
         self.assertTrue((ROOT/'svalka/pb_hooks/svalka.pb.js').exists())

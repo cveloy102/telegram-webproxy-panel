@@ -127,6 +127,48 @@ class Backups(unittest.TestCase):
         once=merge_redirects(config,manifest['redirects'],'proxy.example.com')
         self.assertEqual(once,merge_redirects(once,manifest['redirects'],'proxy.example.com'))
         with self.assertRaises(ValueError):merge_redirects(config,[{'host':'bad.example\nexec evil','code':'302'}],'proxy.example.com')
+    def test_redirect_already_in_sites_folder_is_not_defined_twice(self):
+        # Since sites.d, the installer keeps such blocks there; a second copy in the Caddyfile breaks Caddy.
+        sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+        from restore import merge_redirects
+        config='proxy.example.com {\n reverse_proxy 127.0.0.1:8080\n}\n'
+        sites='# kept\nexample.com {\n redir https://proxy.example.com{uri} 302\n}\n'
+        merged=merge_redirects(config,[{'host':'example.com','code':'302'}],'proxy.example.com',sites)
+        self.assertEqual(merged,config)
+        # A host only in the copy is still added.
+        merged=merge_redirects(config,[{'host':'other.example.com','code':'301'}],'proxy.example.com',sites)
+        self.assertIn('other.example.com {',merged)
+    def test_unmanaged_svalka_database_is_not_backed_up(self):
+        # A rolled-back or foreign СВАЛКА (no domain in install.json) would make the copy unrestorable.
+        svalka=self.root/'svalka-data';svalka.mkdir()
+        with sqlite3.connect(svalka/'data.db') as c:c.execute('CREATE TABLE t(x)')
+        self.paths['svalka']=svalka
+        with patch('backup_archive.svalka_domain',return_value=''):
+            target=self.root/'nosvalka.tar.gz'
+            with target.open('wb') as f:manifest=build_tar(f,self.paths)
+        self.assertFalse(manifest.get('svalka'));self.assertNotIn('svalka/data.db',manifest['files'])
+        with patch('backup_archive.svalka_domain',return_value='sync.example.com'):
+            with target.open('wb') as f:manifest=build_tar(f,self.paths)
+        self.assertTrue(manifest['svalka']);self.assertIn('svalka/data.db',manifest['files'])
+    def test_signature_sees_own_sites_and_svalka_changes(self):
+        self.paths['caddy']=self.root/'etc'/'Caddyfile';self.paths['caddy'].parent.mkdir()
+        self.paths['caddy'].write_text('proxy.example.com {\n}\n')
+        svalka=self.root/'svalka-data';svalka.mkdir();self.paths['svalka']=svalka
+        (svalka/'data.db').write_bytes(b'db')
+        control=Controller(self.root/'backup-sig',self.paths)
+        with patch('backup_archive.svalka_domain',return_value='sync.example.com'):
+            first=control.signature()
+            sites=self.paths['caddy'].parent/'sites.d';sites.mkdir()
+            (sites/'kept.caddy').write_text('example.com {\n file_server\n}\n')
+            second=control.signature();self.assertNotEqual(first,second)
+            (svalka/'data.db-wal').write_bytes(b'new record')
+            third=control.signature();self.assertNotEqual(second,third)
+        with patch('backup_archive.svalka_domain',return_value=''):
+            # Not managed by the panel, so not in the copy and not a reason to upload one.
+            (svalka/'data.db-wal').write_bytes(b'another record, longer')
+            unmanaged=control.signature()
+            (svalka/'data.db-wal').write_bytes(b'x')
+            self.assertEqual(unmanaged,control.signature())
     def test_upload_hash_case_and_concurrent_change(self):
         import hashlib
         for label in ('md5','MD5'):

@@ -11,7 +11,7 @@ import time
 import urllib.request
 import zipfile
 from pathlib import Path
-from units import HARDEN
+from units import HARDEN,CURRENT
 
 VERSION='0.40.6'
 SHA256='0e1f609158ed945f809f8a02ae012aa0427129c66ebb63c1aee76f2c0309373f'
@@ -96,11 +96,15 @@ def secure_settings():
 
 
 def service():
+    # The same migration gate as every other client-facing service: a stopped (migrating) server must not
+    # come back after a reboot and accept records that the final copy no longer contains.
     return f'''[Unit]
 Description=СВАЛКА sync server (PocketBase)
+ConditionPathExists=!/var/lib/relay-migration/blocked
 After=network-online.target
 Wants=network-online.target
 [Service]
+ExecCondition=+/usr/bin/python3 {CURRENT}/panel/migration_state.py --can-start
 User=svalka
 Group=svalka
 WorkingDirectory={ROOT}
@@ -168,7 +172,11 @@ def wait_ready(timeout=60):
 def activate(setup,options,standby=False):
     if not options.get('svalka_domain'):return
     setup.run('systemctl','enable','svalka-sync')
-    # It serves no one until DNS points here, so it runs in standby too; a restore stops it first.
+    if standby:
+        # The migration gate keeps the service stopped until "migration resume". The panel account is
+        # written straight into the database (the CLI needs no running server); limits follow on update.
+        upsert_panel_account(setup)
+        return
     setup.run('systemctl','restart','svalka-sync')
     wait_ready()
     upsert_panel_account(setup)

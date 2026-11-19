@@ -3,7 +3,8 @@
 // Collection "svalka_settings": server-wide switches kept in the database, so they travel with backups
 // and can be changed by the owner (superuser) through the API, for example from a server panel.
 //   signup   — "true" / "false": may the apps create accounts themselves
-//   instance — random id; a restore from a backup gives it a new value, and the apps then compare
+//   instance — random id; a restore from a backup gives it a new value (PocketBase restore: pb_hooks;
+//              panel restore: restore.py; by hand: svalka-sync.sh new-instance), and the apps then compare
 //              all their records with the server once, so edits newer than the backup are not lost.
 migrate((app) => {
   const settings = new Collection({

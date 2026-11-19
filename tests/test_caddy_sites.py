@@ -74,6 +74,36 @@ class CustomSites(unittest.TestCase):
         self.assertIn(' import /etc/caddy/proxy.d/*.caddy\n',template)
         self.assertIn('import /etc/caddy/sites.d/*.caddy',caddy_sites.includes())
 
+    def test_package_default_and_catch_all_blocks_are_dropped(self):
+        # Fresh Ubuntu: the caddy package's own Caddyfile must not end up serving "Caddy works!" on http://IP/.
+        default=':80 {\n root * /usr/share/caddy\n file_server\n}\n'
+        self.assertEqual(caddy_sites.custom_sites(default,self.managed),'')
+        self.assertEqual(caddy_sites.custom_sites('http:// {\n respond "x"\n}\n:443 {\n respond "y"\n}\n',self.managed),'')
+
+    def test_environment_placeholder_site_is_kept(self):
+        kept=caddy_sites.custom_sites('{$SITE} {\n root * {$ROOT}\n file_server\n}\n',self.managed)
+        self.assertIn('{$SITE} {',kept);self.assertIn('{$ROOT}',kept)
+
+    def test_mixed_header_keeps_only_the_owners_hosts(self):
+        kept=caddy_sites.custom_sites('tg.example.com, www.tg.example.com {\n redir https://tg.example.com{uri}\n}\n',self.managed)
+        self.assertTrue(kept.startswith('www.tg.example.com {'),kept)
+        self.assertNotIn('tg.example.com,',kept);self.assertIn('redir https://tg.example.com{uri}',kept)
+        # Already moved to sites.d: not added a second time.
+        self.assertEqual(caddy_sites.custom_sites('tg.example.com, www.tg.example.com {\n}\n',self.managed,'www.tg.example.com {\n}\n'),'')
+
+    def test_rolled_back_update_forgets_the_copy_it_wrote(self):
+        # The restored old Caddyfile still defines the moved sites; a leftover copy would define them twice.
+        import inspect
+        import installer
+        with tempfile.TemporaryDirectory() as folder:
+            kept=Path(folder)/'kept-1.caddy';kept.write_text('example.com {\n}\n')
+            installer.PRESERVED.append(kept)
+            installer.forget_preserved()
+            self.assertFalse(kept.exists());self.assertEqual(installer.PRESERVED,[])
+        main=inspect.getsource(installer.main)
+        self.assertLess(main.index('forget_preserved()'),main.index('restore_internal(snapshot)'))
+        self.assertIn('PRESERVED.append(kept)',inspect.getsource(installer.install_files))
+
     def test_unbalanced_file_is_refused(self):
         with self.assertRaises(ValueError):caddy_sites.custom_sites('a.example.com {\n',self.managed)
         with self.assertRaises(ValueError):caddy_sites.custom_sites('}\n',self.managed)

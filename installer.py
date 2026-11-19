@@ -32,6 +32,12 @@ MTPROXY_COMMIT='f36d8af769ffaeac36978d38c2c0f6d1104c2137'
 MTPROXY_SHA256='919795c416b870670841a21d1930ad97a24c7b84b9eb8c6f9e3de32f2fdf4655'
 P=pathlib.Path
 BASE=P('/opt/relay-panel')
+# Files in /etc/caddy/sites.d written by this run; removed again if the update is rolled back.
+PRESERVED=[]
+
+
+def forget_preserved():
+    while PRESERVED:PRESERVED.pop().unlink(missing_ok=True)
 STATE=P('/etc/relay-panel/install.json')
 LOG=P('/var/log/relay-panel-install.log')
 SERVICES=['relay-panel','relay-helper','tproxy-server','mtproxy','relay-refresh.timer','relay-awg','amneziawg-server','relay-hy2','hysteria-server','relay-backup','svalka-sync']
@@ -387,7 +393,9 @@ def install_files(source,options,work,candidate,mtproxy):
     install_entry(sys.modules[__name__])
     import caddy_sites
     managed=[options['domain'],options.get('hy2_domain'),options.get('svalka_domain')]
-    caddy_sites.preserve(sys.modules[__name__],managed)
+    kept=caddy_sites.preserve(sys.modules[__name__],managed)
+    # A failed update restores the old Caddyfile, which still defines these sites: forget the copy then.
+    if kept:PRESERVED.append(kept)
     write('/etc/caddy/Caddyfile',caddyfile(options['domain'],options['email'])+(hy2_caddy(options['hy2_domain']) if options.get('hy2_domain') else '')+(svalka_caddy(options['svalka_domain']) if options.get('svalka_domain') else '')+caddy_sites.includes())
     run('caddy','validate','--config','/etc/caddy/Caddyfile','--adapter','caddyfile')
     run('/usr/local/bin/tproxy-server','-config','/etc/tproxy-server/config.json','-profiles-file','/etc/tproxy-server/profiles.json','-check')
@@ -523,6 +531,8 @@ def main():
                 activate()
                 health(options['domain'],public=False)
             except (Exception,KeyboardInterrupt):
+                # Before the rollback restarts Caddy: the restored Caddyfile defines these sites itself.
+                forget_preserved()
                 if snapshot:
                     from manage import restore_internal
                     restore_internal(snapshot)
