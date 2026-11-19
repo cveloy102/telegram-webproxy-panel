@@ -327,4 +327,14 @@ class PanelTests(unittest.TestCase):
             self.assertEqual(call.call_args.args[:3],('POST','/api/collections/users/records',
                 {'email':'a@example.com','password':'long-enough','passwordConfirm':'long-enough','verified':True}))
 
+    def test_every_asset_a_template_links_is_served(self):
+        # A page whose script or stylesheet is missing from the allowlist silently breaks (СВАЛКА page, 2026-11).
+        names=set()
+        for template in (BASE/'templates').glob('*.html'):
+            names|=set(re.findall(r'/control/static/([A-Za-z0-9_.-]+?)(?:\?[^"]*)?"',template.read_text(encoding='utf-8')))
+        self.assertIn('svalka.js',names)
+        for name in sorted(names):
+            with self.subTest(asset=name):
+                self.assertEqual(self.client.get('/control/static/'+name,base_url='https://proxy.example.com').status_code,200)
+
 if __name__=='__main__':unittest.main()
