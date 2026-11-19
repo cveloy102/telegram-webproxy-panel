@@ -517,6 +517,11 @@ def main():
         options.update(version=VERSION,revision=args.revision,phase='https-pending');json_write(STATE,options,mode=0o600)
         health(options['domain'])
         options['phase']='complete';json_write(STATE,options,mode=0o600)
+        try:
+            # Only after a fully successful update: older rollback copies and releases are no longer needed.
+            from manage import prune_backups,prune_releases
+            prune_releases();prune_backups()
+        except OSError:pass
         from manage import show_access
         print('\nГОТОВО. Прокси и панель установлены.\n');show_access()
 

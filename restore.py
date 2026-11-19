@@ -172,7 +172,7 @@ def restore_main(argv=None, *, confirmed=False):
                 # The restored database holds the old panel account; give it this server's password again.
                 import installer,svalka_install
                 subprocess.run(['systemctl','restart','svalka-sync'],check=True)
-                svalka_install.wait_ready();svalka_install.upsert_panel_account(installer)
+                svalka_install.wait_ready();svalka_install.upsert_panel_account(installer);svalka_install.secure_settings()
             from installer import health
             if not args.standby:health(current['domain'],public=False)
             from backup_routes import helper as backup_ready
