@@ -86,6 +86,8 @@ Restart=on-failure
 RestartSec=3
 RuntimeDirectory=relay-cascade
 RuntimeDirectoryMode=0750
+# The AWG engine starts before this unit and needs the folder; never remove it on restart.
+RuntimeDirectoryPreserve=yes
 Group=relayadmin
 UMask=0077
 NoNewPrivileges=true

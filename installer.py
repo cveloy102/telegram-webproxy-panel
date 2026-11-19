@@ -378,10 +378,21 @@ def install_files(source,options,work,candidate,mtproxy):
     run('/usr/local/bin/tproxy-server','-config','/etc/tproxy-server/config.json','-profiles-file','/etc/tproxy-server/profiles.json','-check')
     run('systemd-analyze','verify',*[str(P('/etc/systemd/system')/name) for name in units()])
 
+def restart_cascade(attempts=4,pause=3):
+    # The proxies are bound to relay-cascade: give its AWG engine a few seconds instead of failing the update
+    # (and stopping every client protocol) on a first start that systemd would retry anyway.
+    for attempt in range(attempts):
+        try:return run('systemctl','restart','relay-cascade')
+        except RuntimeError:
+            if attempt==attempts-1:raise
+            time.sleep(pause)
+            run('systemctl','reset-failed','relay-cascade')
+
+
 def activate(standby=False):
     run('systemctl','daemon-reload')
     run('systemctl','enable','relay-cascade')
-    run('systemctl','restart','relay-cascade')
+    restart_cascade()
     run('systemctl','enable','--now','tproxy-firewall')
     run('systemctl','enable','mtproxy','tproxy-server','relay-helper','relay-panel','relay-refresh.timer')
     run('systemctl','reset-failed','mtproxy','tproxy-server','relay-helper','relay-panel')

@@ -73,6 +73,17 @@ def backup(include_programs=False):
                 with open(target,'rb') as file:archive.addfile(info,file)
     return path
 
+def start_each(names,attempts=4,pause=3):
+    """Restart every service even when one fails, so a single unit never leaves the others down."""
+    failed=[]
+    for name in names:
+        for attempt in range(attempts):
+            subprocess.run(['systemctl','reset-failed',name],capture_output=True)
+            if subprocess.run(['systemctl','restart',name],capture_output=True).returncode==0:break
+            if attempt<attempts-1:time.sleep(pause)
+        else:failed.append(name)
+    return failed
+
 def restore_internal(path):
     """Only installer-created local backups, for a failed update on the same host."""
     path=P(path)
@@ -117,9 +128,12 @@ def restore_internal(path):
     sys.path.insert(0,str(P(__file__).parent/'panel'))
     from migration_state import blocked
     names=['relay-helper','relay-panel','caddy']
-    if had_cascade:names.insert(0,'relay-cascade')
+    if had_cascade:
+        # The restored engine unit may predate the fix for its runtime folders; create them before it starts.
+        for folder,mode in (('/run/relay-cascade',0o750),('/run/amneziawg',0o700)):P(folder).mkdir(mode=mode,exist_ok=True)
+        names.insert(0,'relay-cascade')
     if not blocked():names+=['mtproxy','tproxy-server','relay-refresh.timer']
-    subprocess.run(['systemctl','restart',*names],check=True)
+    failed=start_each(names)
     state=json.loads((ROOT/'install.json').read_text())
     selected=['relay-backup']
     if not blocked() and state.get('hy2_domain'):selected+=['relay-hy2','hysteria-server']
@@ -146,8 +160,8 @@ def restore_internal(path):
     subprocess.run(['systemctl','daemon-reload'],check=True)
     optional=[name for name in selected if P('/etc/systemd/system/'+name+'.service').exists()]
     if optional:
-        subprocess.run(['systemctl','reset-failed',*optional],check=True)
-        subprocess.run(['systemctl','restart',*optional],check=True)
+        subprocess.run(['systemctl','reset-failed',*optional],check=False)
+        failed+=start_each(optional)
     # Type=simple reports started before the control socket and tunnel are ready.
     # Finish rollback only after the restored protocols actually accept requests.
     if not blocked():
@@ -157,7 +171,8 @@ def restore_internal(path):
             for attempt in range(60):
                 try:helper({'op':'migration_ready'});break
                 except (OSError,ValueError):time.sleep(1)
-            else:raise RuntimeError('После отката не готов протокол: '+field)
+            else:failed.append(field)
+    if failed:raise RuntimeError('После отката не запустились: '+', '.join(failed)+'. Проверь: systemctl --failed')
 
 def refresh():
     sys.path.insert(0,str(P(__file__).parent/'panel'))

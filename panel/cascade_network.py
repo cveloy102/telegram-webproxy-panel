@@ -61,15 +61,11 @@ def tunnel_tool(root=ROOT):
     return '/usr/local/bin/awg' if transport_config(root) else 'wg'
 
 
-def install_transport_runtime():
-    """Install only the optional cascade engine, independent of client AWG."""
-    if not transport_config(): return
-    if not all(Path(p).is_file() for p in ('/usr/local/bin/awg', '/usr/local/bin/amneziawg-go')):
-        raise RuntimeError('Для восстановления AWG каскада нужны проверенные бинарные файлы AmneziaWG 3.1.')
-    Path('/run/amneziawg').mkdir(mode=0o700, exist_ok=True)
-    Path('/run/relay-cascade').mkdir(mode=0o750, exist_ok=True)
-    Path('/etc/tmpfiles.d/relay-cascade-awg.conf').write_text('d /run/amneziawg 0700 root root -\nd /run/relay-cascade 0750 root root -\n')
-    service = 'relay-cascade.service' if (ROOT / 'state.json').exists() else 'relay-cascade-exit.service'
+# relay-cascade starts after its engine and shares the runtime folder with it: keep the folder across restarts.
+TRANSPORT_DROPIN='[Unit]\nWants=relay-cascade-engine.service\nAfter=relay-cascade-engine.service\n[Service]\nRuntimeDirectory=relay-cascade\nRuntimeDirectoryPreserve=yes\nReadWritePaths=/run/amneziawg /run/relay-cascade\n'
+
+
+def engine_unit(service):
     unit = '''[Unit]
 Description=AmneziaWG 3.1 inter-server cascade engine
 After=network-online.target nftables.service
@@ -80,6 +76,9 @@ ConditionPathExists=!/var/lib/relay-migration/blocked
 Type=notify
 NotifyAccess=main
 TimeoutStartSec=30
+# The engine starts before relay-cascade, whose runtime folder may not exist yet; ReadWritePaths needs it.
+ExecStartPre=+/usr/bin/mkdir -p -m 0700 /run/amneziawg
+ExecStartPre=+/usr/bin/mkdir -p -m 0750 /run/relay-cascade
 ExecStart=ENGINE_COMMAND
 Restart=always
 RestartSec=2
@@ -96,12 +95,27 @@ TimeoutStopSec=10
 WantedBy=multi-user.target
 '''
     unit = unit.replace('[Service]', 'PartOf=' + service + '\n[Service]')
-    module = str(Path(__file__).resolve())
+    # The entry node runs the engine from the active release (the installer imports this file from a temporary
+    # source folder, and a resolved release path would outlive that release). The exit node has its own copy.
+    module = '/opt/relay-panel/current/panel/cascade_network.py' if service == 'relay-cascade.service' else str(Path(__file__).resolve())
     unit = unit.replace('ENGINE_COMMAND', '/usr/bin/python3 ' + module + ' --engine')
+    return unit
+
+
+def install_transport_runtime():
+    """Install only the optional cascade engine, independent of client AWG."""
+    if not transport_config(): return
+    if not all(Path(p).is_file() for p in ('/usr/local/bin/awg', '/usr/local/bin/amneziawg-go')):
+        raise RuntimeError('Для восстановления AWG каскада нужны проверенные бинарные файлы AmneziaWG 3.1.')
+    Path('/run/amneziawg').mkdir(mode=0o700, exist_ok=True)
+    Path('/run/relay-cascade').mkdir(mode=0o750, exist_ok=True)
+    Path('/etc/tmpfiles.d/relay-cascade-awg.conf').write_text('d /run/amneziawg 0700 root root -\nd /run/relay-cascade 0750 root root -\n')
+    service = 'relay-cascade.service' if (ROOT / 'state.json').exists() else 'relay-cascade-exit.service'
+    unit = engine_unit(service)
     Path('/etc/systemd/system/relay-cascade-engine.service').write_text(unit)
     folder = Path('/etc/systemd/system') / (service + '.d')
     folder.mkdir(exist_ok=True)
-    folder.joinpath('awg-transport.conf').write_text('[Unit]\nWants=relay-cascade-engine.service\nAfter=relay-cascade-engine.service\n[Service]\nRuntimeDirectory=relay-cascade\nReadWritePaths=/run/amneziawg /run/relay-cascade\n')
+    folder.joinpath('awg-transport.conf').write_text(TRANSPORT_DROPIN)
     run('systemctl', 'daemon-reload')
     run('systemctl', 'enable', 'relay-cascade-engine.service')
 
