@@ -14,7 +14,7 @@ This repository contains its own installer, control panel, and optional relay ac
 | Gunicorn | https://github.com/benoitc/gunicorn | Ubuntu package; upstream MIT license. |
 | python-qrcode / Pillow | https://github.com/lincolnloop/python-qrcode / https://python-pillow.org/ | Ubuntu packages; see respective upstream licenses. |
 | Go / gorilla/websocket | https://go.dev/ / https://github.com/gorilla/websocket | Build tool and relay dependency; see respective upstream licenses. |
-| Inter, Inter Display / JetBrains Mono | https://github.com/rsms/inter / https://github.com/JetBrains/JetBrainsMono | Panel fonts in `panel/static/*.ttf`, served by the panel itself; SIL Open Font License 1.1. |
+| Inter, Inter Display / JetBrains Mono | https://github.com/rsms/inter / https://github.com/JetBrains/JetBrainsMono | Panel fonts in `panel/static/*.ttf`, served by the panel itself; SIL Open Font License 1.1, texts in `panel/static/OFL-*.txt`. |
 
 Service definitions in `units.py` are project-specific. The accounting patch is maintained against one upstream commit; upstream updates require a reviewed patch and new checksums, not an unreviewed download of the latest branch.
 

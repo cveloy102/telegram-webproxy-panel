@@ -1,12 +1,12 @@
-#fsociety-preview a.fc-button{color:var(--fc-ink);text-decoration:none;display:inline-flex;align-items:center}
-#fsociety-preview #backup-settings .fc-rule{grid-template-columns:minmax(0,1fr) minmax(220px,420px);align-items:center}
-#fsociety-preview #backup-settings input:not([type=checkbox]){min-width:0;align-self:center;height:44px}
-#fsociety-preview #backup-settings .fc-rule:has(input[type=checkbox]){display:block}
-#fsociety-preview details.fc-rule{display:block}
-#fsociety-preview details.fc-rule summary{cursor:pointer;padding:8px 0}
-#fsociety-preview #backup-connect textarea{width:100%;box-sizing:border-box;border-radius:var(--radius-md);background:var(--fc-bg);color:inherit;border:1px solid var(--fc-line);padding:12px;resize:vertical;font:inherit}
-#fsociety-preview #backup-error{color:var(--fc-red)}
-#fsociety-preview code{overflow-wrap:anywhere}
-#fsociety-preview .backup-instructions li{margin:16px 0;line-height:1.6}
-#fsociety-preview details pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:12px;border-radius:var(--radius-md);border:1px solid var(--fc-line);max-width:100%;box-sizing:border-box}
-@media(max-width:720px){#fsociety-preview #backup-settings .fc-rule{grid-template-columns:minmax(0,1fr)}#fsociety-preview .fc-header{gap:12px}}
+#panelturn a.fc-button{color:var(--fc-ink);text-decoration:none;display:inline-flex;align-items:center}
+#panelturn #backup-settings .fc-rule{grid-template-columns:minmax(0,1fr) minmax(220px,420px);align-items:center}
+#panelturn #backup-settings input:not([type=checkbox]){min-width:0;align-self:center;height:44px}
+#panelturn #backup-settings .fc-rule:has(input[type=checkbox]){display:block}
+#panelturn details.fc-rule{display:block}
+#panelturn details.fc-rule summary{cursor:pointer;padding:8px 0}
+#panelturn #backup-connect textarea{width:100%;box-sizing:border-box;border-radius:var(--radius-md);background:var(--fc-bg);color:inherit;border:1px solid var(--fc-line);padding:12px;resize:vertical;font:inherit}
+#panelturn #backup-error{color:var(--fc-red)}
+#panelturn code{overflow-wrap:anywhere}
+#panelturn .backup-instructions li{margin:16px 0;line-height:1.6}
+#panelturn details pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:12px;border-radius:var(--radius-md);border:1px solid var(--fc-line);max-width:100%;box-sizing:border-box}
+@media(max-width:720px){#panelturn #backup-settings .fc-rule{grid-template-columns:minmax(0,1fr)}#panelturn .fc-header{gap:12px}}
