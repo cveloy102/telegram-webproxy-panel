@@ -6,5 +6,5 @@
 #fsociety-preview #cascade-state{font-weight:600}
 #fsociety-preview #cascade-error,#fsociety-preview #cascade-health{color:var(--fc-red);overflow-wrap:anywhere}
 #fsociety-preview #cascade-message{color:var(--fc-green)}
-#fsociety-preview .fc-cascade-command{white-space:pre-wrap;overflow-wrap:anywhere;padding:12px;border:1px solid var(--fc-line);background:var(--fc-bg)}
+#fsociety-preview .fc-cascade-command{white-space:pre-wrap;overflow-wrap:anywhere;padding:12px;border-radius:var(--radius-md);border:1px solid var(--fc-line);background:var(--fc-bg)}
 @media(max-width:720px){#fsociety-preview .fc textarea{font-size:16px}#fsociety-preview #cascade-config,#fsociety-preview #cascade-pair{max-width:100%}}

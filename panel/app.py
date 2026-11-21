@@ -140,13 +140,14 @@ def maintenance():
 
 @app.after_request
 def headers(response):
-    response.headers['Cache-Control']='no-store'
+    # Brand fonts never change between releases; everything else is private and fresh.
+    response.headers['Cache-Control']='private, max-age=604800' if request.path.endswith('.ttf') and response.status_code==200 else 'no-store'
     # Native form POSTs may send Origin:null under no-referrer.
     # Keep same-origin form provenance; do not disclose referrers externally.
     response.headers['Referrer-Policy']='same-origin'
     response.headers['X-Content-Type-Options']='nosniff'
     response.headers['X-Frame-Options']='DENY'
-    response.headers['Content-Security-Policy']="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+    response.headers['Content-Security-Policy']="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
     response.headers['Permissions-Policy']='camera=(), microphone=(), geolocation=()'
     return response
 
@@ -407,7 +408,7 @@ def api_ack():
 
 @app.get(PREFIX+'/static/<path:name>')
 def assets(name):
-    if name not in ('panel.css','panel.js','hysteria.css','hysteria.js','amnezia.js','backups.js','backups.css','migration.js','cascade.js','cascade.css','svalka.js','svalka.css','favicon.svg','favicon.ico','apple-touch-icon.png'):
+    if name not in ('panel.css','panel.js','hysteria.css','hysteria.js','amnezia.js','backups.js','backups.css','migration.js','cascade.js','cascade.css','svalka.js','svalka.css','favicon.svg','favicon.ico','apple-touch-icon.png','theme.js','inter-display-black.ttf','inter-medium.ttf','jetbrains-mono-medium.ttf'):
         abort(404)
     return app.send_static_file(name)
 

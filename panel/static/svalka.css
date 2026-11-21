@@ -4,11 +4,11 @@
 #fsociety-preview #svalka-error:empty{display:none}
 /* The control column of a rule sits in the middle of its row, whatever its height. */
 #fsociety-preview .svalka-page .fc-rule>:last-child{align-self:center}
-#fsociety-preview #svalka-address{overflow-wrap:anywhere;font-size:14px;padding:8px 12px;border:1px solid var(--fc-line);background:var(--fc-panel)}
+#fsociety-preview #svalka-address{overflow-wrap:anywhere;font-size:14px;padding:8px 12px;border:1px solid var(--fc-line);border-radius:var(--radius-md);background:var(--fc-panel)}
 #fsociety-preview .svalka-fields{display:grid;grid-template-columns:repeat(2,minmax(150px,220px)) auto;gap:10px;align-items:stretch}
 #fsociety-preview .svalka-fields input{width:100%;min-width:0;margin:0;box-sizing:border-box}
-/* Room for the primary button's offset shadow so it never touches the next row. */
-#fsociety-preview .svalka-fields .fc-button{margin:0 3px 3px 0}
+/* Buttons line up with the fields beside them. */
+#fsociety-preview .svalka-fields .fc-button{margin:0}
 #fsociety-preview .svalka-users{list-style:none;margin:0;padding:0}
 #fsociety-preview .svalka-users li{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--fc-line)}
 #fsociety-preview .svalka-users li span{overflow-wrap:anywhere}
