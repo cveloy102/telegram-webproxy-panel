@@ -42,7 +42,7 @@ html,body{margin:0;background:var(--bg);color:var(--text)}
 #panelturn ::selection{background:var(--accent);color:var(--on-accent)}
 
 /* Header: pixel mark, wordmark, theme and exit. */
-#panelturn .fc-header{display:flex;flex-wrap:wrap;align-items:center;gap:14px;padding:22px 24px 18px;border-bottom:1px solid var(--divider)}
+#panelturn .fc-header{display:flex;flex-wrap:wrap;align-items:center;gap:14px;padding:16px 24px;border-bottom:1px solid var(--divider)}
 #panelturn .fc-logo{display:grid;grid-template-columns:repeat(3,7px);gap:3px;transform:rotate(-5deg);flex-shrink:0}
 #panelturn .fc-logo b{height:7px;border-radius:1px;background:var(--accent)}
 #panelturn .fc-logo b:nth-child(5){background:transparent}
@@ -54,30 +54,21 @@ html,body{margin:0;background:var(--bg);color:var(--text)}
 #panelturn .fc-logout input[type=hidden]{display:none}
 #panelturn .fc-theme{min-width:44px;padding:0 12px}
 
-/* Labels and eyebrows. */
+/* Labels. Quiet: muted, upper case, never red. */
 #panelturn .fc-label{color:var(--muted);font:500 11px/1.4 var(--font-mono);letter-spacing:.12em;text-transform:uppercase}
-#panelturn .fc-heading .fc-label,#panelturn .fc-detail>.fc-label,#panelturn .fc-auth main>.fc-label{color:var(--accent)}
-#panelturn .fc-heading .fc-label::before,#panelturn .fc-detail>.fc-label::before,#panelturn .fc-auth main>.fc-label::before{content:"[ "}
-#panelturn .fc-heading .fc-label::after,#panelturn .fc-detail>.fc-label::after,#panelturn .fc-auth main>.fc-label::after{content:" ]"}
 #panelturn .fc-muted{color:var(--muted);font-size:12px}
 
-/* Shared navigation: protocols as cards, management as plates. */
-#panelturn .fc-navigation{display:flex;flex-wrap:wrap;gap:18px 28px;padding:18px 24px;border-bottom:1px solid var(--divider)}
-#panelturn .fc-protocols{flex:1 1 530px;min-width:0}
-#panelturn .fc-nav-label{display:block;margin-bottom:10px}
-#panelturn .fc-nav-label::before{content:"// "}
-#panelturn .fc-protocol-links{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-#panelturn .fc-protocol{display:flex;flex-direction:column;gap:4px;min-height:66px;padding:12px 14px;border:1px solid var(--divider);border-radius:var(--radius-md);background:var(--card);color:var(--text);text-decoration:none;transition:border-color .16s}
-#panelturn .fc-protocol strong{font:500 15px/1.25 var(--font-mono)}
+/* Shared navigation: one quiet row. Protocols, a hairline, then server management. */
+#panelturn .fc-navigation{display:flex;align-items:center;gap:10px;padding:8px 24px;border-bottom:1px solid var(--divider);overflow-x:auto;scrollbar-width:thin}
+#panelturn .fc-protocols,#panelturn .fc-management{flex:none}
+#panelturn .fc-management{padding-left:10px;border-left:1px solid var(--divider)}
+#panelturn .fc-nav-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+#panelturn .fc-protocol-links,#panelturn .fc-management-links{display:flex;gap:2px}
+#panelturn .fc-protocol,#panelturn .fc-management a{display:flex;align-items:baseline;gap:8px;min-height:40px;padding:10px 12px;border-radius:var(--radius-md);color:var(--muted);text-decoration:none;white-space:nowrap;font-size:13px;transition:color .16s,background-color .16s}
+#panelturn .fc-protocol strong{font-weight:500}
 #panelturn .fc-protocol span{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
-#panelturn .fc-protocol:hover{border-color:var(--muted)}
-#panelturn .fc-protocol[aria-current=page]{border-color:var(--accent);background:var(--plate)}
-#panelturn .fc-protocol[aria-current=page] strong::after{content:"_";color:var(--accent)}
-#panelturn .fc-management{flex:0 1 auto}
-#panelturn .fc-management-links{display:flex;flex-wrap:wrap;gap:6px}
-#panelturn .fc-management a{display:flex;align-items:center;min-height:44px;padding:10px 14px;border:1px solid var(--divider);border-radius:var(--radius-md);color:var(--muted);text-decoration:none;font-size:12px;transition:border-color .16s,color .16s}
-#panelturn .fc-management a:hover{color:var(--text);border-color:var(--muted)}
-#panelturn .fc-management a[aria-current=page]{color:var(--text);background:var(--plate);border-color:var(--plate)}
+#panelturn .fc-protocol:hover,#panelturn .fc-management a:hover{color:var(--text)}
+#panelturn .fc-protocol[aria-current=page],#panelturn .fc-management a[aria-current=page]{background:var(--plate);color:var(--text)}
 
 /* Section tabs: the selected one sits on a plate. */
 #panelturn .fc-nav{display:flex;flex-wrap:wrap;gap:6px;padding:12px 24px;border-bottom:1px solid var(--divider)}
@@ -90,7 +81,7 @@ html,body{margin:0;background:var(--bg);color:var(--text)}
 #panelturn .fc-main{padding:28px 24px}
 #panelturn .fc-main>p{max-width:820px}
 #panelturn .fc-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:24px}
-#panelturn .fc-heading h2,#panelturn .fc-auth h1{margin:12px 0 0;font:900 36px/1.05 var(--font-display);letter-spacing:-.035em;color:var(--text)}
+#panelturn .fc-heading h2,#panelturn .fc-auth h1{margin:0;font:900 36px/1.05 var(--font-display);letter-spacing:-.035em;color:var(--text)}
 #panelturn .fc-heading h2::after,#panelturn .fc-auth h1::after{content:"_";color:var(--accent)}
 #panelturn .fc-heading p{margin:10px 0 0}
 
@@ -107,9 +98,10 @@ html,body{margin:0;background:var(--bg);color:var(--text)}
 #panelturn .fc-actions .fc-button{font-size:12px}
 #panelturn .fc-actions .fc-primary{font-size:13px}
 
-/* Stats: one card with hairlines between cells. */
-#panelturn .fc-stats{display:grid;grid-template-columns:repeat(3,1fr);margin:0 0 24px;background:var(--card);border:1px solid var(--divider);border-radius:var(--radius-lg);overflow:hidden}
-#panelturn .fc-stat{display:flex;flex-direction:column;gap:6px;padding:16px 18px;border-right:1px solid var(--divider);min-width:0}
+/* Stats: plain figures between hairlines, no box. */
+#panelturn .fc-stats{display:grid;grid-template-columns:repeat(3,1fr);margin:0 0 28px;border-top:1px solid var(--divider);border-bottom:1px solid var(--divider)}
+#panelturn .fc-stat{display:flex;flex-direction:column;gap:6px;padding:16px 18px 16px 0;border-right:1px solid var(--divider);min-width:0}
+#panelturn .fc-stat+.fc-stat{padding-left:18px}
 #panelturn .fc-stat:last-child{border-right:0}
 #panelturn .fc-number{display:block;font:900 32px/1 var(--font-display);letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:var(--text);overflow-wrap:anywhere}
 
@@ -123,10 +115,12 @@ html,body{margin:0;background:var(--bg);color:var(--text)}
 #panelturn .fc-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:24px;align-items:start}
 #panelturn .fc-section-title{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
 #panelturn .fc-section-title h3{margin:0;font:500 13px var(--font-mono);color:var(--text)}
-#panelturn .fc-users{display:grid;gap:6px}
-#panelturn .fc-user{display:block;width:100%;padding:13px 16px;text-align:left;background:var(--card);border:1px solid var(--divider);border-radius:var(--radius-md);transition:border-color .16s}
-#panelturn .fc-user:hover{border-color:var(--muted)}
-#panelturn .fc-user[aria-pressed=true]{border-color:var(--accent);background:var(--plate)}
+#panelturn .fc-users{display:grid;background:var(--card);border:1px solid var(--divider);border-radius:var(--radius-lg);overflow:hidden}
+#panelturn .fc-users:empty{display:none}
+#panelturn .fc-user{display:block;width:100%;padding:14px 16px;text-align:left;background:transparent;border:0;border-radius:0;transition:background-color .16s}
+#panelturn .fc-user+.fc-user{border-top:1px solid var(--divider)}
+#panelturn .fc-user:hover{background:color-mix(in srgb,var(--plate) 50%,var(--card))}
+#panelturn .fc-user[aria-pressed=true]{background:var(--plate)}
 #panelturn .fc-user-top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px}
 #panelturn .fc-user-name{font-size:15px;color:var(--text)}
 #panelturn .fc-user-sub{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
@@ -149,7 +143,7 @@ html,body{margin:0;background:var(--bg);color:var(--text)}
 #panelturn .fc-ip{padding:8px 0;border-top:1px solid var(--divider);font-size:12px;overflow-wrap:anywhere}
 #panelturn .fc-ip:first-of-type{border-top:0}
 #panelturn .fc-ip summary{cursor:pointer;padding:6px 0;color:var(--text)}
-#panelturn .fc-ip summary::marker{color:var(--accent)}
+#panelturn .fc-ip summary::marker{color:var(--muted)}
 #panelturn .fc-address{margin-top:8px;padding:10px 12px;background:var(--bg);border-radius:var(--radius-md)}
 
 /* Settings rows: hairlines between them, the control on the right. */
@@ -160,7 +154,7 @@ html,body{margin:0;background:var(--bg);color:var(--text)}
 #panelturn .fc-rule select{width:180px;max-width:100%}
 #panelturn details.fc-rule{display:block}
 #panelturn details.fc-rule summary{cursor:pointer;padding:6px 0;color:var(--text)}
-#panelturn details.fc-rule summary::marker{color:var(--accent)}
+#panelturn details.fc-rule summary::marker{color:var(--muted)}
 #panelturn .fc-save{margin-top:22px}
 
 /* Fields. */
@@ -238,12 +232,8 @@ html,body{margin:0;background:var(--bg);color:var(--text)}
 @media(max-width:720px){
   #panelturn .fc-header{padding:18px 16px 14px}
   #panelturn .fc>.fc-banner{margin:14px 16px 0}
-  #panelturn .fc-navigation{padding:14px 16px;gap:14px}
-  #panelturn .fc-protocol{padding:10px;min-height:62px}
-  #panelturn .fc-protocol strong{font-size:13px}
-  #panelturn .fc-protocol span{font-size:9px;letter-spacing:.03em}
-  #panelturn .fc-management{flex:1 1 100%}
-  #panelturn .fc-management a{flex:1 1 auto;justify-content:center}
+  #panelturn .fc-navigation{padding:6px 16px}
+  #panelturn .fc-protocol span{display:none}
   #panelturn .fc-nav{padding:10px 16px}
   #panelturn .fc-main{padding:22px 16px}
   #panelturn .fc-heading{flex-direction:column;align-items:flex-start}
@@ -256,7 +246,7 @@ html,body{margin:0;background:var(--bg);color:var(--text)}
 }
 @media(max-width:480px){
   #panelturn .fc-stats{grid-template-columns:1fr}
-  #panelturn .fc-stat{flex-direction:row;align-items:center;justify-content:space-between;border-right:0;border-bottom:1px solid var(--divider);padding:12px 16px}
+  #panelturn .fc-stat,#panelturn .fc-stat+.fc-stat{flex-direction:row;align-items:center;justify-content:space-between;border-right:0;border-bottom:1px solid var(--divider);padding:12px 0}
   #panelturn .fc-stat:last-child{border-bottom:0}
   #panelturn .fc-stat .fc-number{font-size:24px}
   #panelturn .fc-stat .fc-muted{display:none}
