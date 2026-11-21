@@ -1,8 +1,5 @@
-/* RELAY panel — Terminal 2.0.
-   Dark terminal, one brand red, monospace text, a heavy display face for titles, soft corners, no shadows.
-   Every colour is a token below; page stylesheets read the --fc-* aliases. */
+/* PanelTURN. Warm neutrals and a single red accent. */
 
-@font-face{font-family:"Inter Display";src:url(inter-display-black.ttf) format("truetype");font-weight:900;font-style:normal;font-display:swap}
 @font-face{font-family:"Inter";src:url(inter-medium.ttf) format("truetype");font-weight:500;font-style:normal;font-display:swap}
 @font-face{font-family:"JetBrains Mono";src:url(jetbrains-mono-medium.ttf) format("truetype");font-weight:500;font-style:normal;font-display:swap}
 
@@ -12,15 +9,14 @@
   --accent:#f0443e;--on-accent:#101010;--online:#8cdbad;
   --switch-off:#303030;--switch-border:#79766e;--thumb-off:#e8e4d9;--thumb-on:#e8e4d9;
   --tint-accent:#2a1817;--tint-online:#16231b;--backdrop:#000000b3;
-  --font-display:"Inter Display","Inter","Arial Black",system-ui,sans-serif;
   --font-sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --font-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
-  --radius-sm:5px;--radius-switch:8px;--radius-md:14px;--radius-lg:16px;--radius-dialog:22px;--radius-pill:999px;
+  --radius-sm:5px;--radius-switch:8px;--radius-md:8px;--radius-lg:10px;--radius-dialog:12px;--radius-pill:999px;
 }
 :root[data-theme=light]{
   color-scheme:light;
   --bg:#f5f2eb;--card:#eeebe4;--plate:#e7e2d8;--text:#191918;--muted:#68645d;--divider:#d5d0c7;
-  --accent:#cf332d;--on-accent:#ffffff;--online:#296744;
+  --accent:#bc2e28;--on-accent:#ffffff;--online:#296744;
   --switch-off:#d5d0c7;--switch-border:#999389;--thumb-off:#68645d;--thumb-on:#ffffff;
   --tint-accent:#f6e3df;--tint-online:#e1ece3;--backdrop:#19191899;
 }
@@ -28,8 +24,8 @@
 html,body{margin:0;background:var(--bg);color:var(--text)}
 #panelturn .fc{
   --fc-bg:var(--bg);--fc-panel:var(--card);--fc-line:var(--divider);--fc-ink:var(--text);--fc-dim:var(--muted);--fc-red:var(--accent);--fc-green:var(--online);
-  max-width:1280px;margin:auto;min-height:100vh;background:var(--bg);color:var(--text);
-  font:500 13px/1.55 var(--font-mono);-webkit-font-smoothing:antialiased;
+  max-width:1440px;margin:auto;min-height:100vh;background:var(--bg);color:var(--text);
+  font:500 14px/1.5 var(--font-sans);-webkit-font-smoothing:antialiased;
 }
 #panelturn *{box-sizing:border-box}
 #panelturn .fc button,#panelturn .fc input,#panelturn .fc select,#panelturn .fc textarea{font:inherit;color:inherit}
@@ -42,60 +38,67 @@ html,body{margin:0;background:var(--bg);color:var(--text)}
 #panelturn ::selection{background:var(--accent);color:var(--on-accent)}
 
 /* Header: pixel mark, wordmark, theme and exit. */
-#panelturn .fc-header{display:flex;flex-wrap:wrap;align-items:center;gap:14px;padding:22px 24px 18px;border-bottom:1px solid var(--divider)}
+#panelturn .fc-header{display:flex;align-items:center;gap:12px;padding:13px 24px;border-bottom:1px solid var(--divider)}
 #panelturn .fc-logo{display:grid;grid-template-columns:repeat(3,7px);gap:3px;transform:rotate(-5deg);flex-shrink:0}
 #panelturn .fc-logo b{height:7px;border-radius:1px;background:var(--accent)}
 #panelturn .fc-logo b:nth-child(5){background:transparent}
 #panelturn .fc-brand{font:500 21px/1.15 var(--font-sans);letter-spacing:.02em;color:var(--text)}
 #panelturn .fc-brand b{font-weight:500;color:var(--accent)}
-#panelturn .fc-header .fc-label{margin-top:3px}
 #panelturn .fc-tools{margin-left:auto;display:flex;align-items:center;gap:8px}
 #panelturn .fc-logout{margin:0}
 #panelturn .fc-logout input[type=hidden]{display:none}
 #panelturn .fc-theme{min-width:44px;padding:0 12px}
 
 /* Labels and eyebrows. */
-#panelturn .fc-label{color:var(--muted);font:500 11px/1.4 var(--font-mono);letter-spacing:.12em;text-transform:uppercase}
-#panelturn .fc-heading .fc-label,#panelturn .fc-detail>.fc-label,#panelturn .fc-auth main>.fc-label{color:var(--accent)}
-#panelturn .fc-heading .fc-label::before,#panelturn .fc-detail>.fc-label::before,#panelturn .fc-auth main>.fc-label::before{content:"[ "}
-#panelturn .fc-heading .fc-label::after,#panelturn .fc-detail>.fc-label::after,#panelturn .fc-auth main>.fc-label::after{content:" ]"}
+#panelturn .fc-label{color:var(--muted);font:500 12px/1.4 var(--font-sans)}
 #panelturn .fc-muted{color:var(--muted);font-size:12px}
 
-/* Shared navigation: protocols as cards, management as plates. */
-#panelturn .fc-navigation{display:flex;flex-wrap:wrap;gap:18px 28px;padding:18px 24px;border-bottom:1px solid var(--divider)}
-#panelturn .fc-protocols{flex:1 1 530px;min-width:0}
-#panelturn .fc-nav-label{display:block;margin-bottom:10px}
-#panelturn .fc-nav-label::before{content:"// "}
-#panelturn .fc-protocol-links{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-#panelturn .fc-protocol{display:flex;flex-direction:column;gap:4px;min-height:66px;padding:12px 14px;border:1px solid var(--divider);border-radius:var(--radius-md);background:var(--card);color:var(--text);text-decoration:none;transition:border-color .16s}
-#panelturn .fc-protocol strong{font:500 15px/1.25 var(--font-mono)}
-#panelturn .fc-protocol span{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
-#panelturn .fc-protocol:hover{border-color:var(--muted)}
-#panelturn .fc-protocol[aria-current=page]{border-color:var(--accent);background:var(--plate)}
-#panelturn .fc-protocol[aria-current=page] strong::after{content:"_";color:var(--accent)}
-#panelturn .fc-management{flex:0 1 auto}
-#panelturn .fc-management-links{display:flex;flex-wrap:wrap;gap:6px}
-#panelturn .fc-management a{display:flex;align-items:center;min-height:44px;padding:10px 14px;border:1px solid var(--divider);border-radius:var(--radius-md);color:var(--muted);text-decoration:none;font-size:12px;transition:border-color .16s,color .16s}
-#panelturn .fc-management a:hover{color:var(--text);border-color:var(--muted)}
-#panelturn .fc-management a[aria-current=page]{color:var(--text);background:var(--plate);border-color:var(--plate)}
+/* The desktop rail and the mobile protocol bar share the same destinations. */
+#panelturn .fc:has(.fc-navigation){
+  display:grid;
+  grid-template-columns:210px minmax(0,1fr);
+  grid-template-rows:auto auto auto 1fr auto;
+}
+#panelturn .fc:has(.fc-navigation)>.fc-header{grid-column:1/-1;grid-row:1}
+#panelturn .fc:has(.fc-navigation)>.fc-banner{grid-column:2;grid-row:2}
+#panelturn .fc:has(.fc-navigation)>.fc-nav{grid-column:2;grid-row:3}
+#panelturn .fc:has(.fc-navigation)>.fc-main{grid-column:2;grid-row:4;min-width:0}
+#panelturn .fc:has(.fc-navigation)>.fc-signature{grid-column:2;grid-row:5}
+#panelturn .fc-navigation{
+  grid-column:1;grid-row:2/6;padding:22px 12px;
+  background:color-mix(in srgb,var(--bg) 65%,var(--card));border-right:1px solid var(--divider);
+}
+#panelturn .fc-nav-label{display:block;margin:0 10px 8px;color:var(--muted);font-size:12px}
+#panelturn .fc-protocol-links,#panelturn .fc-management-links{display:grid;gap:3px}
+#panelturn .fc-protocol,#panelturn .fc-management-links a,#panelturn .fc-server-menu summary{
+  display:flex;align-items:center;min-height:42px;padding:9px 10px;
+  border-radius:var(--radius-md);color:var(--muted);text-decoration:none;font-size:13px;
+}
+#panelturn .fc-navigation a:hover,#panelturn .fc-server-menu summary:hover{background:var(--card);color:var(--text)}
+#panelturn .fc-navigation a[aria-current=page],#panelturn .fc-server-menu[data-current] summary{
+  background:var(--plate);color:var(--text);font-weight:650;
+}
+#panelturn .fc-navigation a[aria-current=page]{box-shadow:inset 2px 0 var(--accent)}
+#panelturn .fc-server-menu{margin-top:20px;padding-top:17px;border-top:1px solid var(--divider)}
+#panelturn .fc-server-menu .fc-nav-label{margin-bottom:5px}
+#panelturn .fc-server-menu summary{display:none}
 
-/* Section tabs: the selected one sits on a plate. */
-#panelturn .fc-nav{display:flex;flex-wrap:wrap;gap:6px;padding:12px 24px;border-bottom:1px solid var(--divider)}
-#panelturn .fc-nav button{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:8px 14px;background:none;border:0;border-radius:var(--radius-md);color:var(--muted)}
+/* Tabs stay attached to the service workspace. */
+#panelturn .fc-nav{display:flex;flex-wrap:wrap;gap:18px;padding:0 30px;border-bottom:1px solid var(--divider)}
+#panelturn .fc-nav button{display:inline-flex;align-items:center;gap:8px;min-height:45px;padding:8px 2px;background:none;border:0;border-bottom:2px solid transparent;color:var(--muted)}
 #panelturn .fc-nav button:hover{color:var(--text)}
-#panelturn .fc-nav button[aria-selected=true]{background:var(--plate);color:var(--text)}
+#panelturn .fc-nav button[aria-selected=true]{border-bottom-color:var(--accent);color:var(--text)}
 #panelturn .fc-nav button span:not(.fc-risk){color:var(--muted)}
 
 /* Page body and heading. */
-#panelturn .fc-main{padding:28px 24px}
+#panelturn .fc-main{padding:26px 30px}
 #panelturn .fc-main>p{max-width:820px}
-#panelturn .fc-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:24px}
-#panelturn .fc-heading h2,#panelturn .fc-auth h1{margin:12px 0 0;font:900 36px/1.05 var(--font-display);letter-spacing:-.035em;color:var(--text)}
-#panelturn .fc-heading h2::after,#panelturn .fc-auth h1::after{content:"_";color:var(--accent)}
+#panelturn .fc-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}
+#panelturn .fc-heading h2,#panelturn .fc-auth h1{margin:0;font:650 30px/1.15 var(--font-sans);letter-spacing:-.025em;color:var(--text)}
 #panelturn .fc-heading p{margin:10px 0 0}
 
 /* Buttons. One accent button per view; the rest are cards. */
-#panelturn .fc-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;padding:9px 14px;border:1px solid var(--divider);border-radius:var(--radius-md);background:var(--card);color:var(--text);font:500 13px/1.3 var(--font-mono);text-decoration:none;white-space:nowrap;transition:border-color .16s,background-color .16s}
+#panelturn .fc-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;padding:9px 14px;border:1px solid var(--divider);border-radius:var(--radius-md);background:var(--card);color:var(--text);font:550 13px/1.3 var(--font-sans);text-decoration:none;white-space:nowrap;transition:border-color .16s,background-color .16s}
 #panelturn .fc-button:hover{border-color:var(--muted)}
 #panelturn .fc-primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)!important;font-size:14px}
 #panelturn .fc-primary:hover{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 88%,var(--text))}
@@ -107,28 +110,30 @@ html,body{margin:0;background:var(--bg);color:var(--text)}
 #panelturn .fc-actions .fc-button{font-size:12px}
 #panelturn .fc-actions .fc-primary{font-size:13px}
 
-/* Stats: one card with hairlines between cells. */
-#panelturn .fc-stats{display:grid;grid-template-columns:repeat(3,1fr);margin:0 0 24px;background:var(--card);border:1px solid var(--divider);border-radius:var(--radius-lg);overflow:hidden}
-#panelturn .fc-stat{display:flex;flex-direction:column;gap:6px;padding:16px 18px;border-right:1px solid var(--divider);min-width:0}
-#panelturn .fc-stat:last-child{border-right:0}
-#panelturn .fc-number{display:block;font:900 32px/1 var(--font-display);letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:var(--text);overflow-wrap:anywhere}
+/* Aligned metrics separated by rules. */
+#panelturn .fc-stats{display:grid;grid-template-columns:repeat(3,1fr);margin:0 0 18px;border-block:1px solid var(--divider)}
+#panelturn .fc-stat{display:flex;flex-direction:column;gap:4px;padding:12px 18px 12px 0;min-width:0}
+#panelturn .fc-stat+.fc-stat{padding-left:16px;border-left:1px solid var(--divider)}
+#panelturn .fc-number{display:block;font:650 24px/1.15 var(--font-sans);letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--text);overflow-wrap:anywhere}
 
-/* Alerts: an accent outline, never a coloured stripe. */
-#panelturn .fc-alert{display:flex;align-items:center;gap:14px;padding:13px 16px;margin-bottom:12px;background:var(--tint-accent);border:1px solid var(--accent);border-radius:var(--radius-md)}
+/* Alerts share a quiet surface and a clear leading indicator. */
+#panelturn .fc-alert{display:flex;align-items:center;gap:14px;padding:9px 12px;margin-bottom:8px;background:var(--tint-accent);border-left:2px solid var(--accent);border-radius:var(--radius-md)}
 #panelturn .fc-alert strong{font-weight:500;color:var(--accent)}
 #panelturn .fc-alert .fc-button{margin-left:auto}
-#panelturn #alerts:not(:empty){margin-bottom:24px}
+#panelturn #alerts:not(:empty){margin-bottom:18px}
 
 /* Users list and the selected user's card. */
-#panelturn .fc-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:24px;align-items:start}
+#panelturn .fc-grid{display:grid;grid-template-columns:minmax(0,1.18fr) minmax(0,1fr);gap:20px;align-items:start}
 #panelturn .fc-section-title{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
-#panelturn .fc-section-title h3{margin:0;font:500 13px var(--font-mono);color:var(--text)}
-#panelturn .fc-users{display:grid;gap:6px}
-#panelturn .fc-user{display:block;width:100%;padding:13px 16px;text-align:left;background:var(--card);border:1px solid var(--divider);border-radius:var(--radius-md);transition:border-color .16s}
-#panelturn .fc-user:hover{border-color:var(--muted)}
-#panelturn .fc-user[aria-pressed=true]{border-color:var(--accent);background:var(--plate)}
+#panelturn .fc-section-title h3{margin:0;font:650 15px var(--font-sans);color:var(--text)}
+#panelturn .fc-users{display:grid;border-block:1px solid var(--divider)}
+#panelturn .fc-users:empty{display:none}
+#panelturn .fc-user{display:block;width:100%;padding:11px 12px;text-align:left;background:transparent;border:0;transition:background-color .16s}
+#panelturn .fc-user+.fc-user{border-top:1px solid var(--divider)}
+#panelturn .fc-user:hover{background:var(--card)}
+#panelturn .fc-user[aria-pressed=true]{box-shadow:inset 2px 0 var(--accent);background:var(--plate)}
 #panelturn .fc-user-top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px}
-#panelturn .fc-user-name{font-size:15px;color:var(--text)}
+#panelturn .fc-user-name{font-size:14px;font-weight:650;color:var(--text)}
 #panelturn .fc-user-sub{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
 #panelturn .fc-last{margin-top:4px}
 #panelturn .fc-status{font-size:11px;letter-spacing:.04em;color:var(--online);white-space:nowrap}
@@ -136,25 +141,26 @@ html,body{margin:0;background:var(--bg);color:var(--text)}
 #panelturn .hy-status-warn{color:var(--accent)}
 #panelturn .fc-risk{color:var(--accent);font-size:11px}
 #panelturn .fc-detail{min-width:0;padding:20px;margin-bottom:24px;background:var(--card);border:1px solid var(--divider);border-radius:var(--radius-lg)}
-#panelturn .fc-detail h3{margin:0 0 10px;font:500 14px/1.35 var(--font-mono)}
+#panelturn .fc-detail h3{margin:0 0 10px;font:650 14px/1.35 var(--font-sans)}
 #panelturn .fc-grid .fc-detail{position:sticky;top:16px;margin-bottom:0}
-#panelturn .fc-grid .fc-detail h3{margin:8px 0 10px;font:900 24px/1.1 var(--font-display);letter-spacing:-.03em;overflow-wrap:anywhere}
-#panelturn .fc-detail dl{display:grid;grid-template-columns:1fr auto;margin:14px 0 16px;font-size:12px}
-#panelturn .fc-detail dt,#panelturn .fc-detail dd{padding:9px 0;border-top:1px solid var(--divider)}
+#panelturn .fc-grid .fc-detail h3{margin:0 0 6px;font:650 21px/1.2 var(--font-sans);letter-spacing:-.02em;overflow-wrap:anywhere}
+#panelturn .fc-detail dl{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,auto);margin:12px 0 14px;font-size:13px}
+#panelturn .fc-detail dt,#panelturn .fc-detail dd{padding:7px 0;border-top:1px solid var(--divider)}
 #panelturn .fc-detail dt{color:var(--muted)}
-#panelturn .fc-detail dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+#panelturn .fc-detail dd{margin:0 0 0 12px;text-align:right;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
 #panelturn .fc-key{margin:14px 0;padding:12px 14px;background:var(--bg);border:1px dashed var(--divider);border-radius:var(--radius-md);font-size:12px;overflow-wrap:anywhere;white-space:pre-wrap}
 #panelturn .fc-ips{margin-top:22px;padding-top:16px;border-top:1px solid var(--divider)}
-#panelturn .fc-ips h4{margin:0 0 10px;font:500 12px var(--font-mono)}
+#panelturn .fc-ips h4{margin:0 0 10px;font:650 13px var(--font-sans)}
 #panelturn .fc-ip{padding:8px 0;border-top:1px solid var(--divider);font-size:12px;overflow-wrap:anywhere}
 #panelturn .fc-ip:first-of-type{border-top:0}
 #panelturn .fc-ip summary{cursor:pointer;padding:6px 0;color:var(--text)}
 #panelturn .fc-ip summary::marker{color:var(--accent)}
+#panelturn code,#panelturn .fc-key,#panelturn #address{font-family:var(--font-mono)}
 #panelturn .fc-address{margin-top:8px;padding:10px 12px;background:var(--bg);border-radius:var(--radius-md)}
 
 /* Settings rows: hairlines between them, the control on the right. */
 #panelturn .fc-rule{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:18px;padding:16px 0;border-bottom:1px solid var(--divider)}
-#panelturn .fc-rule h3{margin:0 0 4px;font:500 14px/1.35 var(--font-mono);color:var(--text)}
+#panelturn .fc-rule h3{margin:0 0 4px;font:650 14px/1.35 var(--font-sans);color:var(--text)}
 #panelturn .fc-rule p{margin:6px 0}
 #panelturn .fc-rule label{display:grid;gap:6px;font-size:12px;color:var(--muted)}
 #panelturn .fc-rule select{width:180px;max-width:100%}
@@ -186,6 +192,12 @@ html,body{margin:0;background:var(--bg);color:var(--text)}
 #panelturn .fc-event strong{font-weight:500}
 #panelturn .fc-event-actions{margin-top:10px}
 
+/* The routing summary remains visible while maintenance actions are grouped below it. */
+#panelturn #routing-panel{padding:12px 0;margin:0 0 18px;background:transparent;border:0;border-block:1px solid var(--divider);border-radius:0}
+#panelturn #routing-panel p{margin:6px 0}
+#panelturn #routing-panel summary{cursor:pointer;color:var(--text);min-height:36px;padding:8px 0}
+#panelturn #routing-panel .fc-actions{margin-bottom:4px}
+
 /* Messages. */
 #panelturn .fc-toast{color:var(--online);font-size:12px;overflow-wrap:anywhere}
 #panelturn .fc-toast:not(:empty){margin:0 0 16px;padding:10px 14px;background:var(--tint-online);border-radius:var(--radius-md)}
@@ -213,7 +225,7 @@ html,body{margin:0;background:var(--bg);color:var(--text)}
 /* Dialogs. */
 #panelturn dialog{width:calc(100% - 32px);max-width:500px;max-height:90vh;overflow:auto;padding:24px;color:var(--text);background:var(--card);border:1px solid var(--divider);border-radius:var(--radius-dialog)}
 #panelturn dialog::backdrop{background:var(--backdrop);backdrop-filter:blur(2px)}
-#panelturn dialog h2,#panelturn dialog h3{margin:0 0 14px;font:900 24px/1.1 var(--font-display);letter-spacing:-.03em}
+#panelturn dialog h2,#panelturn dialog h3{margin:0 0 14px;font:650 22px/1.2 var(--font-sans);letter-spacing:-.02em}
 #panelturn dialog p{margin:12px 0 18px}
 #panelturn dialog .fc-actions{margin-top:20px;justify-content:flex-end}
 #panelturn dialog label{display:grid;gap:6px;color:var(--muted);font-size:12px}
@@ -231,36 +243,56 @@ html,body{margin:0;background:var(--bg);color:var(--text)}
 @keyframes fc-blink{50%{opacity:0}}
 @media(prefers-reduced-motion:reduce){#panelturn *{transition:none!important;animation:none!important}}
 
-@media(max-width:900px){
-  #panelturn .fc-grid{grid-template-columns:1fr}
-  #panelturn .fc-grid .fc-detail{position:static}
+@media(max-width:1000px){
+  #panelturn .fc:has(.fc-navigation){grid-template-columns:172px minmax(0,1fr)}
+  #panelturn .fc-nav{padding-inline:22px}
+  #panelturn .fc-main{padding-inline:22px}
 }
-@media(max-width:720px){
-  #panelturn .fc-header{padding:18px 16px 14px}
-  #panelturn .fc>.fc-banner{margin:14px 16px 0}
-  #panelturn .fc-navigation{padding:14px 16px;gap:14px}
-  #panelturn .fc-protocol{padding:10px;min-height:62px}
-  #panelturn .fc-protocol strong{font-size:13px}
-  #panelturn .fc-protocol span{font-size:9px;letter-spacing:.03em}
-  #panelturn .fc-management{flex:1 1 100%}
-  #panelturn .fc-management a{flex:1 1 auto;justify-content:center}
-  #panelturn .fc-nav{padding:10px 16px}
-  #panelturn .fc-main{padding:22px 16px}
-  #panelturn .fc-heading{flex-direction:column;align-items:flex-start}
-  #panelturn .fc-heading h2{font-size:28px}
-  #panelturn .fc-auth h1{font-size:32px}
-  #panelturn .fc-alert{flex-wrap:wrap}
+@media(max-width:840px){
+  #panelturn .fc:has(.fc-navigation){display:block}
+  #panelturn .fc-header{padding:10px 14px}
+  #panelturn .fc-navigation{
+    display:flex;justify-content:space-between;align-items:center;gap:4px;padding:3px 10px;
+    border-right:0;border-bottom:1px solid var(--divider);
+  }
+  #panelturn .fc-protocol-links{display:flex;gap:1px}
+  #panelturn .fc-navigation .fc-nav-label{display:none}
+  #panelturn .fc-navigation a[aria-current=page]{box-shadow:inset 0 -2px var(--accent)}
+  #panelturn .fc-server-menu{position:relative;margin:0;padding:0;border:0}
+  #panelturn .fc-server-menu summary{display:flex;cursor:pointer;gap:5px}
+  #panelturn .fc-server-menu summary::-webkit-details-marker{display:none}
+  #panelturn .fc-server-menu summary::after{
+    content:"";width:5px;height:5px;border-right:1px solid;border-bottom:1px solid;transform:rotate(45deg);
+  }
+  #panelturn .fc-server-menu nav{
+    position:absolute;top:calc(100% + 4px);right:0;z-index:2;width:180px;padding:4px;
+    background:var(--card);border:1px solid var(--divider);border-radius:var(--radius-md);
+  }
+  #panelturn .fc-server-menu nav a{min-height:44px}
+}
+@media(max-width:650px){
+  #panelturn .fc-nav{padding-inline:14px}
+  #panelturn .fc-main{padding:18px 14px}
+  #panelturn .fc-heading{align-items:flex-start;flex-wrap:wrap;gap:10px}
+  #panelturn .fc-heading h2{font-size:24px}
+  #panelturn .fc-auth h1{font-size:28px}
+  #panelturn .fc-grid{grid-template-columns:1fr;gap:14px}
+  #panelturn .fc-grid .fc-detail{position:static}
+  #panelturn .fc-detail{padding:14px}
+  #panelturn .fc-button{max-width:100%;white-space:normal;text-align:center}
+  #panelturn .fc-alert{flex-wrap:wrap;gap:6px 10px}
   #panelturn .fc-alert .fc-button{margin-left:0}
   #panelturn .fc-rule{grid-template-columns:1fr;gap:10px}
   #panelturn .fc-event{grid-template-columns:1fr;gap:6px}
 }
 @media(max-width:480px){
-  #panelturn .fc-stats{grid-template-columns:1fr}
-  #panelturn .fc-stat{flex-direction:row;align-items:center;justify-content:space-between;border-right:0;border-bottom:1px solid var(--divider);padding:12px 16px}
-  #panelturn .fc-stat:last-child{border-bottom:0}
-  #panelturn .fc-stat .fc-number{font-size:24px}
+  #panelturn .fc-header{gap:8px}
+  #panelturn .fc-brand{font-size:19px}
+  #panelturn .fc-stat,#panelturn .fc-stat+.fc-stat{padding:8px 6px}
+  #panelturn .fc-stat:first-child{padding-left:0}
+  #panelturn .fc-stat .fc-number{font-size:17px}
   #panelturn .fc-stat .fc-muted{display:none}
-  #panelturn .fc-nav button{padding:8px 10px;font-size:12px}
+  #panelturn .fc-protocol,#panelturn .fc-server-menu summary{min-height:44px;padding-inline:7px;font-size:12px}
 }
 @media(pointer:coarse){
   #panelturn .fc-button,#panelturn .fc-nav button{min-height:44px}

@@ -1,4 +1,4 @@
-// Terminal 2.0 theme: dark is the default; the owner's choice is remembered in this browser only.
+// Dark is the default; the owner's choice is remembered in this browser.
 (function(){
   var root=document.documentElement,key='relay-theme';
   function read(){try{return localStorage.getItem(key)==='light'?'light':'dark'}catch(e){return 'dark'}}
@@ -13,6 +13,13 @@
   apply(read());
   document.addEventListener('DOMContentLoaded',function(){
     apply(read());
+    const menu = document.querySelector('.fc-server-menu');
+    if (menu) {
+      const compactNavigation = window.matchMedia('(max-width: 840px)');
+      const resizeMenu = () => { menu.open = !compactNavigation.matches; };
+      resizeMenu();
+      compactNavigation.addEventListener('change', resizeMenu);
+    }
     document.addEventListener('click',function(event){
       var button=event.target.closest&&event.target.closest('[data-theme-toggle]');
       if(!button)return;
