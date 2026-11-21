@@ -206,6 +206,10 @@ html,body{margin:0;background:var(--bg);color:var(--text)}
 /* Footer. */
 #panelturn .fc-foot{display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-top:32px;padding-top:14px;border-top:1px solid var(--divider);font-size:11px;color:var(--muted)}
 
+/* Brand signature under every page. */
+#panelturn .fc-signature{margin:0;padding:18px 24px 26px;text-align:center;font:500 11px/1.4 var(--font-mono);letter-spacing:.12em;color:var(--muted)}
+#panelturn .fc-signature b{font-weight:500;color:var(--accent)}
+
 /* Dialogs. */
 #panelturn dialog{width:calc(100% - 32px);max-width:500px;max-height:90vh;overflow:auto;padding:24px;color:var(--text);background:var(--card);border:1px solid var(--divider);border-radius:var(--radius-dialog)}
 #panelturn dialog::backdrop{background:var(--backdrop);backdrop-filter:blur(2px)}
